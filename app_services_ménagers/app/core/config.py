@@ -58,6 +58,15 @@ class Settings:
 		"CELERY_RESULT_BACKEND",
 		os.getenv("REDIS_URL", "redis://localhost:6379/0"),
 	)
+	mail_backend: str = os.getenv("MAIL_BACKEND", "disabled")
+	mail_from: str = os.getenv("MAIL_FROM", "no-reply@chezvous.local")
+	mailhog_host: str = os.getenv("MAILHOG_HOST", "mailhog")
+	mailhog_port: int = int(os.getenv("MAILHOG_PORT", "1025"))
+	smtp_host: str = os.getenv("SMTP_HOST", "localhost")
+	smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
+	smtp_username: str = os.getenv("SMTP_USERNAME", "")
+	smtp_password: str = os.getenv("SMTP_PASSWORD", "")
+	smtp_use_tls: bool = _as_bool(os.getenv("SMTP_USE_TLS"), True)
 
 
 settings = Settings()

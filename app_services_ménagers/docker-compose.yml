@@ -48,6 +48,15 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+      MAIL_BACKEND: ${MAIL_BACKEND:-mailhog}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@chezvous.local}
+      MAILHOG_HOST: ${MAILHOG_HOST:-mailhog}
+      MAILHOG_PORT: ${MAILHOG_PORT:-1025}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
     ports:
       - "8000:8000"
     volumes:
@@ -67,6 +76,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mailhog:
+        condition: service_started
 
   frontend:
     build:
@@ -103,6 +114,15 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-3e159fb65a9948039f1239cd58ea1595}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+      MAIL_BACKEND: disabled
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: menage_mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
 
   redis:
     image: redis:7-alpine

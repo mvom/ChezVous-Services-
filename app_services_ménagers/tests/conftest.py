@@ -52,11 +52,24 @@ def client(db_session):
 
 
 def register_user(client: TestClient, *, full_name: str, phone: str, password: str, role: str) -> dict:
+    tokens = full_name.split()
+    first_name = tokens[0] if tokens else "Utilisateur"
+    last_name = " ".join(tokens[1:]) if len(tokens) > 1 else "Test"
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if len(digits) >= 9:
+        digits = digits[-9:]
+    else:
+        digits = digits.rjust(9, "0")
+
     response = client.post(
         "/api/v1/auth/register",
         json={
-            "full_name": full_name,
-            "phone": phone,
+            "first_name": first_name,
+            "last_name": last_name,
+            "username": f"{first_name.lower()}.{last_name.lower().replace(' ', '.')}.{digits[-3:]}",
+            "email": f"{first_name.lower()}.{last_name.lower().replace(' ', '.')}@example.com",
+            "address": "Adresse de test, Yaounde",
+            "phone": f"+237 {digits[0:3]} {digits[3:6]} {digits[6:9]}",
             "password": password,
             "role": role,
         },
@@ -66,9 +79,15 @@ def register_user(client: TestClient, *, full_name: str, phone: str, password: s
 
 
 def login_user(client: TestClient, *, phone: str, password: str) -> str:
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if len(digits) >= 9:
+        digits = digits[-9:]
+    else:
+        digits = digits.rjust(9, "0")
+
     response = client.post(
         "/api/v1/auth/login",
-        json={"phone": phone, "password": password},
+        json={"phone": f"+237 {digits[0:3]} {digits[3:6]} {digits[6:9]}", "password": password},
     )
     assert response.status_code == 200, response.text
     return response.json()["access_token"]

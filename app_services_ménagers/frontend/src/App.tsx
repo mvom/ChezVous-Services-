@@ -34,6 +34,8 @@ type ToastState = {
   message: string;
 } | null;
 
+type AuthMode = "login" | "register";
+
 const API_BASE = "http://localhost:8000/api/v1";
 const TOKEN_KEY = "sm_token";
 const HIDDEN_ADMIN_PATH = "/_staff/console";
@@ -90,6 +92,27 @@ function roleHomePath(role?: Role): string {
   return "/";
 }
 
+function formatCameroonPhone(value: string): string {
+  const compact = value.replace(/\s+/g, "").trim();
+  const normalized = compact.startsWith("+237") ? compact : `+237${compact.replace(/^\+/, "")}`;
+  const digits = normalized.replace("+237", "");
+  if (!/^\d{9}$/.test(digits)) {
+    return value;
+  }
+  return `+237 ${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)}`;
+}
+
+function normalizePersonName(value: string): string {
+  const cleaned = value.trim().replace(/\s+/g, " ");
+  if (!cleaned) {
+    return cleaned;
+  }
+  return cleaned
+    .split(" ")
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+    .join(" ");
+}
+
 function AppShell(): JSX.Element {
   const navigate = useNavigate();
   const [token, setToken] = useState<string>(() => window.localStorage.getItem(TOKEN_KEY) || "");
@@ -100,6 +123,10 @@ function AppShell(): JSX.Element {
   const [dashboardPending, setDashboardPending] = useState(false);
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [authModeByRole, setAuthModeByRole] = useState<Record<Extract<Role, "client" | "prestataire">, AuthMode>>({
+    client: "register",
+    prestataire: "register",
+  });
 
   useEffect(() => {
     if (!toast) {
@@ -193,6 +220,13 @@ function AppShell(): JSX.Element {
   async function handleRegister(event: FormEvent<HTMLFormElement>, role: Extract<Role, "client" | "prestataire">) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+    const password = String(formData.get("password") || "");
+    const passwordConfirmation = String(formData.get("password_confirmation") || "");
+
+    if (password !== passwordConfirmation) {
+      setToast({ kind: "err", message: "Les deux mots de passe ne correspondent pas." });
+      return;
+    }
 
     try {
       setRegisterPending(true);
@@ -200,14 +234,19 @@ function AppShell(): JSX.Element {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          full_name: String(formData.get("full_name") || ""),
-          phone: String(formData.get("phone") || ""),
-          password: String(formData.get("password") || ""),
+          first_name: normalizePersonName(String(formData.get("first_name") || "")),
+          last_name: normalizePersonName(String(formData.get("last_name") || "")),
+          username: String(formData.get("username") || "").trim().toLowerCase(),
+          email: String(formData.get("email") || "").trim().toLowerCase(),
+          address: String(formData.get("address") || "").trim(),
+          phone: formatCameroonPhone(String(formData.get("phone") || "")),
+          password,
           role,
         }),
       });
-      setToast({ kind: "ok", message: "Account created, now login" });
+      setToast({ kind: "ok", message: "Compte cree. Verifiez le mail de confirmation puis connectez-vous." });
       event.currentTarget.reset();
+      setAuthModeByRole((prev) => ({ ...prev, [role]: "login" }));
     } catch (error) {
       setToast({ kind: "err", message: error instanceof Error ? error.message : "Registration failed" });
     } finally {
@@ -270,6 +309,29 @@ function AppShell(): JSX.Element {
     }
   }
 
+  async function handleUnregister() {
+    if (!token) {
+      return;
+    }
+    const password = window.prompt("Entrez votre mot de passe pour confirmer la desinscription :");
+    if (!password) {
+      return;
+    }
+
+    try {
+      await apiFetch<{ detail: string }>("/auth/unregister", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ password }),
+      });
+      logout();
+      setToast({ kind: "ok", message: "Compte supprime. Verification dans MailHog." });
+      navigate("/", { replace: true });
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Desinscription impossible" });
+    }
+  }
+
   function logout() {
     setToken("");
     setClaims(null);
@@ -287,7 +349,8 @@ function AppShell(): JSX.Element {
     const subtitle =
       roleForPage === "client"
         ? "Créez des demandes et suivez vos missions à domicile."
-        : "Proposez vos services et gérez les missions entrantes."
+        : "Proposez vos services et gérez les missions entrantes.";
+    const authMode = authModeByRole[roleForPage];
 
     return (
       <section className="panel auth-panel">
@@ -299,41 +362,110 @@ function AppShell(): JSX.Element {
           <button type="button" className="ghost" onClick={() => navigate("/")}>Back</button>
         </div>
 
-        <div className="two-col">
-          <form className="card stack" onSubmit={(event) => void handleLogin(event, roleForPage)}>
-            <h3>Login</h3>
+        <div className="auth-switch-banner">
+          {authMode === "register" ? (
+            <p>
+              Deja inscrit ?
+              <button
+                type="button"
+                className="text-btn"
+                onClick={() => setAuthModeByRole((prev) => ({ ...prev, [roleForPage]: "login" }))}
+              >
+                Connectez-vous
+              </button>
+            </p>
+          ) : (
+            <p>
+              Pas encore inscrit ?
+              <button
+                type="button"
+                className="text-btn"
+                onClick={() => setAuthModeByRole((prev) => ({ ...prev, [roleForPage]: "register" }))}
+              >
+                Creez votre compte
+              </button>
+            </p>
+          )}
+        </div>
+
+        {authMode === "login" ? (
+          <form className="card stack auth-single-card" onSubmit={(event) => void handleLogin(event, roleForPage)}>
+            <h3>Connexion</h3>
             <label>
-              <span>Phone</span>
-              <input type="text" name="phone" required />
+              <span>Identifiant (username ou telephone)</span>
+              <input type="text" name="phone" placeholder="username ou +237 6XX XXX XXX" required />
             </label>
             <label>
-              <span>Password</span>
+              <span>Mot de passe</span>
               <input type="password" name="password" required />
             </label>
             <button type="submit" disabled={loginPending}>
-              {loginPending ? "Signing in..." : "Login"}
+              {loginPending ? "Connexion..." : "Se connecter"}
             </button>
           </form>
-
-          <form className="card stack" onSubmit={(event) => void handleRegister(event, roleForPage)}>
-            <h3>Create {roleForPage} account</h3>
+        ) : (
+          <form className="card stack auth-single-card" onSubmit={(event) => void handleRegister(event, roleForPage)}>
+            <h3>Inscription {roleForPage}</h3>
             <label>
-              <span>Full name</span>
-              <input type="text" name="full_name" required />
+              <span>Prenom</span>
+              <input
+                type="text"
+                name="first_name"
+                onBlur={(event) => {
+                  event.currentTarget.value = normalizePersonName(event.currentTarget.value);
+                }}
+                required
+              />
             </label>
             <label>
-              <span>Phone</span>
-              <input type="text" name="phone" required />
+              <span>Nom</span>
+              <input
+                type="text"
+                name="last_name"
+                onBlur={(event) => {
+                  event.currentTarget.value = normalizePersonName(event.currentTarget.value);
+                }}
+                required
+              />
             </label>
             <label>
-              <span>Password</span>
+              <span>Username</span>
+              <input type="text" name="username" placeholder="ex: alice.client" minLength={3} required />
+            </label>
+            <label>
+              <span>Email</span>
+              <input type="email" name="email" placeholder="ex: nom@email.com" required />
+            </label>
+            <label>
+              <span>Adresse</span>
+              <input type="text" name="address" placeholder="Quartier, ville" minLength={5} required />
+            </label>
+            <label>
+              <span>Telephone</span>
+              <input
+                type="text"
+                name="phone"
+                placeholder="+237 6XX XXX XXX"
+                pattern="\+237\s\d{3}\s\d{3}\s\d{3}"
+                onBlur={(event) => {
+                  event.currentTarget.value = formatCameroonPhone(event.currentTarget.value);
+                }}
+                required
+              />
+            </label>
+            <label>
+              <span>Mot de passe</span>
               <input type="password" name="password" minLength={8} required />
             </label>
+            <label>
+              <span>Confirmer le mot de passe</span>
+              <input type="password" name="password_confirmation" minLength={8} required />
+            </label>
             <button type="submit" disabled={registerPending}>
-              {registerPending ? "Creating..." : "Register"}
+              {registerPending ? "Creation..." : "S'inscrire"}
             </button>
           </form>
-        </div>
+        )}
       </section>
     );
   }
@@ -349,6 +481,9 @@ function AppShell(): JSX.Element {
           <div className="meta">
             <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
               Refresh
+            </button>
+            <button type="button" className="ghost" onClick={() => void handleUnregister()}>
+              Desinscription
             </button>
             <button type="button" className="ghost" onClick={logout}>
               Logout
@@ -439,6 +574,9 @@ function AppShell(): JSX.Element {
           <div className="meta">
             <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
               Refresh
+            </button>
+            <button type="button" className="ghost" onClick={() => void handleUnregister()}>
+              Desinscription
             </button>
             <button type="button" className="ghost" onClick={logout}>
               Logout
