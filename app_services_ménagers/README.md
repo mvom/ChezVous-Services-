@@ -91,6 +91,7 @@ Main variables:
 
 - APP_ENV
 - APP_DEBUG
+- AUTO_MIGRATE
 - LOG_LEVEL
 - LOG_JSON
 - LOG_TO_FILE
@@ -100,6 +101,9 @@ Main variables:
 - ENABLE_REQUEST_LOGGING
 - API_WORKERS
 - CORS_ORIGINS
+- REDIS_URL
+- CELERY_BROKER_URL
+- CELERY_RESULT_BACKEND
 - DATABASE_URL
 - JWT_SECRET_KEY
 - JWT_ALGORITHM
@@ -119,11 +123,13 @@ The backend now includes a first production-readiness layer:
 
 - centralized settings in [app/core/config.py](app/core/config.py)
 - JSON request logging with rotating file handler in [app/core/log_config.py](app/core/log_config.py)
+- Gunicorn access/error logs unified in JSON through [app/core/gunicorn_logging.py](app/core/gunicorn_logging.py)
 - request logging middleware in [app/main.py](app/main.py)
 - GZip middleware for API responses
 - `/health` for liveness and `/ready` for database readiness
 - non-root API container runtime in [Dockerfile](Dockerfile)
 - Compose healthcheck for the API service in [docker-compose.yml](docker-compose.yml)
+- Alembic migration executed automatically at API startup through [docker/api-entrypoint.sh](docker/api-entrypoint.sh)
 
 Alembic migration support is now available with:
 
@@ -137,6 +143,23 @@ Useful commands:
 - `c:/DATA/Documents/projets/app_menage/.venv/Scripts/python.exe -m alembic upgrade head`
 - `docker compose run --rm api alembic upgrade head`
 
+## 5.2) Redis and Async Tasks Preparation
+
+The next phase foundation is now scaffolded with:
+
+- Redis service (profile `async`) in [docker-compose.yml](docker-compose.yml)
+- Celery app in [app/tasks/celery_app.py](app/tasks/celery_app.py)
+- sample task in [app/tasks/tasks.py](app/tasks/tasks.py)
+- worker service (profile `async`) in [docker-compose.yml](docker-compose.yml)
+
+Run async stack when needed:
+
+- `docker compose --profile async up -d redis worker`
+
+Trigger a sample task from Python shell:
+
+- `from app.tasks.tasks import ping; ping.delay()`
+
 Useful endpoints:
 
 - http://localhost:8000/health
@@ -149,6 +172,11 @@ Auth resources:
 - Register
 - Login
 - List users (admin)
+
+Public registration hardening:
+
+- public `/api/v1/auth/register` now blocks `admin` role creation with HTTP 403
+- admin accounts must be provisioned through a controlled internal process (not the public register endpoint)
 
 Roles:
 
@@ -220,7 +248,23 @@ A phase 1 web app is available in [frontend](frontend) with:
 - authentication (register/login)
 - dashboard with requests and services listing
 - role-aware creation forms
+- role-based spaces:
+   - client: `/espace/client`
+   - prestataire: `/espace/prestataire`
+   - admin: hidden route `/_staff/console`
+- public landing role choice does not expose admin
 - production bundle served by Nginx in Docker
+
+Frontend routing tests now cover:
+
+- public landing hides admin choice
+- role-based redirects to the proper space
+- hidden admin route access control
+
+Run frontend tests:
+
+- `cd frontend`
+- `npm run test`
 
 Frontend files:
 

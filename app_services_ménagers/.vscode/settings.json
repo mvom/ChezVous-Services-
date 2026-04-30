@@ -1,0 +1,14 @@
+{
+  "C_Cpp.files.exclude": {
+    "**/.venv/**": true,
+    "**/venv/**": true
+  },
+  "files.watcherExclude": {
+    "**/.venv/**": true,
+    "**/venv/**": true
+  },
+  "search.exclude": {
+    "**/.venv/**": true,
+    "**/venv/**": true
+  }
+}

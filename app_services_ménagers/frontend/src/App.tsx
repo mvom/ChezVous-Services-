@@ -36,6 +36,7 @@ type ToastState = {
 
 const API_BASE = "http://localhost:8000/api/v1";
 const TOKEN_KEY = "sm_token";
+const HIDDEN_ADMIN_PATH = "/_staff/console";
 
 function decodeJwt(jwtToken: string): JwtClaims | null {
   if (!jwtToken || jwtToken.split(".").length !== 3) {
@@ -54,9 +55,7 @@ function decodeJwt(jwtToken: string): JwtClaims | null {
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, options);
   const contentType = response.headers.get("content-type") || "";
-  const body: unknown = contentType.includes("application/json")
-    ? await response.json()
-    : await response.text();
+  const body: unknown = contentType.includes("application/json") ? await response.json() : await response.text();
 
   if (!response.ok) {
     const detail =
@@ -76,6 +75,19 @@ function authHeaders(token: string): HeadersInit {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   };
+}
+
+function roleHomePath(role?: Role): string {
+  if (role === "client") {
+    return "/espace/client";
+  }
+  if (role === "prestataire") {
+    return "/espace/prestataire";
+  }
+  if (role === "admin") {
+    return HIDDEN_ADMIN_PATH;
+  }
+  return "/";
 }
 
 function AppShell(): JSX.Element {
@@ -101,11 +113,12 @@ function AppShell(): JSX.Element {
   useEffect(() => {
     const nextClaims = decodeJwt(token);
     setClaims(nextClaims);
+
     if (!token || !nextClaims) {
       setDemandes([]);
       setServices([]);
       window.localStorage.removeItem(TOKEN_KEY);
-      navigate("/login", { replace: true });
+      navigate("/", { replace: true });
       return;
     }
 
@@ -126,7 +139,7 @@ function AppShell(): JSX.Element {
       ]);
       setDemandes(nextDemandes);
       setServices(nextServices);
-      navigate("/dashboard", { replace: true });
+      navigate(roleHomePath(nextClaims.role), { replace: true });
     } catch (error) {
       setToken("");
       setClaims(null);
@@ -144,7 +157,7 @@ function AppShell(): JSX.Element {
     return Number(claims?.sub || 0);
   }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>, expectedRole?: Role) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
 
@@ -158,6 +171,15 @@ function AppShell(): JSX.Element {
           password: String(formData.get("password") || ""),
         }),
       });
+
+      const nextClaims = decodeJwt(result.access_token);
+      if (!nextClaims?.role) {
+        throw new Error("Unable to read role from token");
+      }
+      if (expectedRole && nextClaims.role !== expectedRole) {
+        throw new Error("This account is not allowed on this access page");
+      }
+
       setToken(result.access_token);
       setToast({ kind: "ok", message: "Login successful" });
       event.currentTarget.reset();
@@ -168,7 +190,7 @@ function AppShell(): JSX.Element {
     }
   }
 
-  async function handleRegister(event: FormEvent<HTMLFormElement>) {
+  async function handleRegister(event: FormEvent<HTMLFormElement>, role: Extract<Role, "client" | "prestataire">) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
 
@@ -181,7 +203,7 @@ function AppShell(): JSX.Element {
           full_name: String(formData.get("full_name") || ""),
           phone: String(formData.get("phone") || ""),
           password: String(formData.get("password") || ""),
-          role: String(formData.get("role") || "client"),
+          role,
         }),
       });
       setToast({ kind: "ok", message: "Account created, now login" });
@@ -257,202 +279,430 @@ function AppShell(): JSX.Element {
   }
 
   const role = currentRole();
-  const canCreateDemande = role === "client" || role === "admin";
-  const canCreateService = role === "prestataire" || role === "admin";
+  const userId = currentUserId();
   const isLoggedIn = Boolean(token && claims);
+
+  function renderPublicAuth(roleForPage: Extract<Role, "client" | "prestataire">): JSX.Element {
+    const title = roleForPage === "client" ? "Espace Client" : "Espace Prestataire";
+    const subtitle =
+      roleForPage === "client"
+        ? "Créez des demandes et suivez vos missions à domicile."
+        : "Proposez vos services et gérez les missions entrantes."
+
+    return (
+      <section className="panel auth-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>{title}</h2>
+            <p>{subtitle}</p>
+          </div>
+          <button type="button" className="ghost" onClick={() => navigate("/")}>Back</button>
+        </div>
+
+        <div className="two-col">
+          <form className="card stack" onSubmit={(event) => void handleLogin(event, roleForPage)}>
+            <h3>Login</h3>
+            <label>
+              <span>Phone</span>
+              <input type="text" name="phone" required />
+            </label>
+            <label>
+              <span>Password</span>
+              <input type="password" name="password" required />
+            </label>
+            <button type="submit" disabled={loginPending}>
+              {loginPending ? "Signing in..." : "Login"}
+            </button>
+          </form>
+
+          <form className="card stack" onSubmit={(event) => void handleRegister(event, roleForPage)}>
+            <h3>Create {roleForPage} account</h3>
+            <label>
+              <span>Full name</span>
+              <input type="text" name="full_name" required />
+            </label>
+            <label>
+              <span>Phone</span>
+              <input type="text" name="phone" required />
+            </label>
+            <label>
+              <span>Password</span>
+              <input type="password" name="password" minLength={8} required />
+            </label>
+            <button type="submit" disabled={registerPending}>
+              {registerPending ? "Creating..." : "Register"}
+            </button>
+          </form>
+        </div>
+      </section>
+    );
+  }
+
+  function renderClientWorkspace(): JSX.Element {
+    return (
+      <section className="panel dashboard-panel">
+        <div className="dashboard-title">
+          <div>
+            <h2>Espace Client</h2>
+            <p>Gérez vos demandes et consultez les services disponibles. ID utilisateur : <strong>{userId}</strong>.</p>
+          </div>
+          <div className="meta">
+            <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
+              Refresh
+            </button>
+            <button type="button" className="ghost" onClick={logout}>
+              Logout
+            </button>
+          </div>
+        </div>
+
+        <div className="stats-grid">
+          <article className="metric-card">
+            <span>My requests</span>
+            <strong>{demandes.length}</strong>
+          </article>
+          <article className="metric-card">
+            <span>Available services</span>
+            <strong>{services.length}</strong>
+          </article>
+          <article className="metric-card wide">
+            <span>Workspace</span>
+            <strong>Client</strong>
+          </article>
+        </div>
+
+        <div className="two-col">
+          <section className="card stack">
+            <div className="section-head">
+              <h3>My requests</h3>
+              <span>{dashboardPending ? "Loading..." : "Synced"}</span>
+            </div>
+            <ul className="list clean-list">
+              {demandes.length === 0 ? <li>No requests yet.</li> : null}
+              {demandes.map((demande) => (
+                <li key={demande.id}>
+                  <strong>#{demande.id}</strong> [{demande.status}] {demande.location} - {demande.description}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="card stack">
+            <div className="section-head">
+              <h3>Provider catalog</h3>
+              <span>{dashboardPending ? "Loading..." : "Synced"}</span>
+            </div>
+            <ul className="list clean-list">
+              {services.length === 0 ? <li>No services yet.</li> : null}
+              {services.map((service) => (
+                <li key={service.id}>
+                  <strong>#{service.id}</strong> {service.name} - {service.price} (provider {service.prestataire_id})
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+
+        <div className="two-col">
+          <form className="card stack" onSubmit={handleCreateDemande}>
+            <h3>Create request</h3>
+            <label>
+              <span>Description</span>
+              <textarea name="description" required />
+            </label>
+            <label>
+              <span>Location</span>
+              <input type="text" name="location" required />
+            </label>
+            <button type="submit">Create request</button>
+          </form>
+
+          <section className="card stack muted-card">
+            <h3>Provider interaction</h3>
+            <p>Use your request feed to contact and coordinate with prestataires.</p>
+          </section>
+        </div>
+      </section>
+    );
+  }
+
+  function renderPrestataireWorkspace(): JSX.Element {
+    const ownServices = services.filter((service) => service.prestataire_id === userId);
+
+    return (
+      <section className="panel dashboard-panel">
+        <div className="dashboard-title">
+          <div>
+            <h2>Espace Prestataire</h2>
+            <p>Gérez vos services et suivez les demandes du marché. ID utilisateur : <strong>{userId}</strong>.</p>
+          </div>
+          <div className="meta">
+            <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
+              Refresh
+            </button>
+            <button type="button" className="ghost" onClick={logout}>
+              Logout
+            </button>
+          </div>
+        </div>
+
+        <div className="stats-grid">
+          <article className="metric-card">
+            <span>Open requests</span>
+            <strong>{demandes.length}</strong>
+          </article>
+          <article className="metric-card">
+            <span>My services</span>
+            <strong>{ownServices.length}</strong>
+          </article>
+          <article className="metric-card wide">
+            <span>Workspace</span>
+            <strong>Prestataire</strong>
+          </article>
+        </div>
+
+        <div className="two-col">
+          <section className="card stack">
+            <div className="section-head">
+              <h3>Open requests feed</h3>
+              <span>{dashboardPending ? "Loading..." : "Synced"}</span>
+            </div>
+            <ul className="list clean-list">
+              {demandes.length === 0 ? <li>No requests yet.</li> : null}
+              {demandes.map((demande) => (
+                <li key={demande.id}>
+                  <strong>#{demande.id}</strong> [{demande.status}] {demande.location} - {demande.description}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="card stack">
+            <div className="section-head">
+              <h3>My service catalog</h3>
+              <span>{dashboardPending ? "Loading..." : "Synced"}</span>
+            </div>
+            <ul className="list clean-list">
+              {ownServices.length === 0 ? <li>No services yet.</li> : null}
+              {ownServices.map((service) => (
+                <li key={service.id}>
+                  <strong>#{service.id}</strong> {service.name} - {service.price}
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+
+        <div className="two-col">
+          <form className="card stack" onSubmit={handleCreateService}>
+            <h3>Create service</h3>
+            <label>
+              <span>Name</span>
+              <input type="text" name="name" required />
+            </label>
+            <label>
+              <span>Description</span>
+              <textarea name="description" required />
+            </label>
+            <label>
+              <span>Price</span>
+              <input type="number" name="price" min="0" step="1" required />
+            </label>
+            <button type="submit">Create service</button>
+          </form>
+
+          <section className="card stack muted-card">
+            <h3>Mission readiness</h3>
+            <p>Keep your offer clear and pricing updated to improve request matching.</p>
+          </section>
+        </div>
+      </section>
+    );
+  }
+
+  function renderAdminWorkspace(): JSX.Element {
+    return (
+      <section className="panel dashboard-panel">
+        <div className="dashboard-title">
+          <div>
+            <h2>Console Admin</h2>
+            <p>Espace restreint pour la supervision de la plateforme et les contrôles transversaux.</p>
+          </div>
+          <div className="meta">
+            <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
+              Refresh
+            </button>
+            <button type="button" className="ghost" onClick={logout}>
+              Logout
+            </button>
+          </div>
+        </div>
+
+        <div className="stats-grid">
+          <article className="metric-card">
+            <span>Total requests</span>
+            <strong>{demandes.length}</strong>
+          </article>
+          <article className="metric-card">
+            <span>Total services</span>
+            <strong>{services.length}</strong>
+          </article>
+          <article className="metric-card wide">
+            <span>Workspace</span>
+            <strong>Admin</strong>
+          </article>
+        </div>
+
+        <div className="two-col">
+          <section className="card stack">
+            <div className="section-head">
+              <h3>Requests overview</h3>
+              <span>{dashboardPending ? "Loading..." : "Synced"}</span>
+            </div>
+            <ul className="list clean-list">
+              {demandes.length === 0 ? <li>No requests yet.</li> : null}
+              {demandes.map((demande) => (
+                <li key={demande.id}>
+                  <strong>#{demande.id}</strong> [{demande.status}] {demande.location} - {demande.description}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="card stack">
+            <div className="section-head">
+              <h3>Services overview</h3>
+              <span>{dashboardPending ? "Loading..." : "Synced"}</span>
+            </div>
+            <ul className="list clean-list">
+              {services.length === 0 ? <li>No services yet.</li> : null}
+              {services.map((service) => (
+                <li key={service.id}>
+                  <strong>#{service.id}</strong> {service.name} - {service.price} (provider {service.prestataire_id})
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div className="app-shell">
       <div className="bg-glow bg-glow-a" />
       <div className="bg-glow bg-glow-b" />
+      <div className="bg-glow bg-glow-c" />
       <header className="app-header">
-        <span className="eyebrow">Phase 1</span>
-        <h1>Services Menagers</h1>
-        <p>React + TypeScript frontend connected to the FastAPI backend.</p>
+        <span className="eyebrow">Services à Domicile</span>
+        <h1>ChezVous Services+</h1>
+        <p>Trouvez des prestataires de confiance près de chez vous, et gérez vos missions en toute sérénité.</p>
       </header>
+
+      <section className="services-strip">
+        <p className="services-strip__label">Nos services disponibles</p>
+        <ul className="services-strip__list">
+          <li className="service-chip service-chip--menage">
+            🧹 Ménage
+          </li>
+          <li className="service-chip service-chip--plomberie">
+            🔧 Plomberie
+          </li>
+          <li className="service-chip service-chip--electricite">
+            ⚡ Électricité
+          </li>
+        </ul>
+      </section>
 
       <main className="layout">
         <Routes>
           <Route
-            path="/login"
+            path="/"
             element={
               isLoggedIn ? (
-                <Navigate to="/dashboard" replace />
+                <Navigate to={roleHomePath(role)} replace />
               ) : (
                 <section className="panel auth-panel">
                   <div className="panel-heading">
                     <div>
-                      <h2>Authentication</h2>
-                      <p>Use the existing API roles to enter the platform.</p>
+                      <h2>Bienvenue sur ChezVous Services+</h2>
+                      <p>Choisissez votre profil pour continuer.</p>
                     </div>
-                    <span className="status-pill">FastAPI live</span>
                   </div>
-                  <div className="two-col">
-                    <form className="card stack" onSubmit={handleLogin}>
-                      <h3>Login</h3>
-                      <label>
-                        <span>Phone</span>
-                        <input type="text" name="phone" required />
-                      </label>
-                      <label>
-                        <span>Password</span>
-                        <input type="password" name="password" required />
-                      </label>
-                      <button type="submit" disabled={loginPending}>
-                        {loginPending ? "Signing in..." : "Login"}
-                      </button>
-                    </form>
+                  <div className="choice-grid">
+                    <article className="card stack role-card">
+                      <span className="role-icon">🏠</span>
+                      <h3>Client</h3>
+                      <p>Publiez vos besoins, suivez vos missions et trouvez des prestataires de qualité.</p>
+                      <button type="button" onClick={() => navigate("/auth/client")}>Accès client</button>
+                    </article>
 
-                    <form className="card stack" onSubmit={handleRegister}>
-                      <h3>Create account</h3>
-                      <label>
-                        <span>Full name</span>
-                        <input type="text" name="full_name" required />
-                      </label>
-                      <label>
-                        <span>Phone</span>
-                        <input type="text" name="phone" required />
-                      </label>
-                      <label>
-                        <span>Password</span>
-                        <input type="password" name="password" minLength={8} required />
-                      </label>
-                      <label>
-                        <span>Role</span>
-                        <select name="role" defaultValue="client" required>
-                          <option value="client">Client</option>
-                          <option value="prestataire">Provider</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      </label>
-                      <button type="submit" disabled={registerPending}>
-                        {registerPending ? "Creating..." : "Register"}
-                      </button>
-                    </form>
+                    <article className="card stack role-card">
+                      <span className="role-icon">🛠️</span>
+                      <h3>Prestataire</h3>
+                      <p>Proposez vos services, recevez des missions et développez votre activité.</p>
+                      <button type="button" onClick={() => navigate("/auth/prestataire")}>Accès prestataire</button>
+                    </article>
                   </div>
+                  <p className="subtle-note">Seuls les profils publics sont accessibles depuis cette page.</p>
                 </section>
               )
             }
           />
+
+          <Route path="/auth/client" element={isLoggedIn ? <Navigate to={roleHomePath(role)} replace /> : renderPublicAuth("client")} />
+          <Route path="/auth/prestataire" element={isLoggedIn ? <Navigate to={roleHomePath(role)} replace /> : renderPublicAuth("prestataire")} />
+
           <Route
-            path="/dashboard"
+            path={HIDDEN_ADMIN_PATH}
             element={
               !isLoggedIn ? (
-                <Navigate to="/login" replace />
-              ) : (
-                <section className="panel dashboard-panel">
-                  <div className="dashboard-title">
+                <section className="panel auth-panel">
+                  <div className="panel-heading">
                     <div>
-                      <h2>Operational dashboard</h2>
-                      <p>Connected as role <strong>{role}</strong> with user id <strong>{currentUserId()}</strong>.</p>
+                      <h2>Accès Admin Sécurisé</h2>
+                      <p>Accès restreint — non visible des utilisateurs publics.</p>
                     </div>
-                    <div className="meta">
-                      <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
-                        Refresh
-                      </button>
-                      <button type="button" className="ghost" onClick={logout}>
-                        Logout
-                      </button>
-                    </div>
+                    <span className="status-pill">restricted</span>
                   </div>
-
-                  <div className="stats-grid">
-                    <article className="metric-card">
-                      <span>Requests</span>
-                      <strong>{demandes.length}</strong>
-                    </article>
-                    <article className="metric-card">
-                      <span>Services</span>
-                      <strong>{services.length}</strong>
-                    </article>
-                    <article className="metric-card wide">
-                      <span>API Base</span>
-                      <strong>{API_BASE}</strong>
-                    </article>
-                  </div>
-
-                  <div className="two-col">
-                    <section className="card stack">
-                      <div className="section-head">
-                        <h3>Requests</h3>
-                        <span>{dashboardPending ? "Loading..." : "Synced"}</span>
-                      </div>
-                      <ul className="list clean-list">
-                        {demandes.length === 0 ? <li>No requests yet.</li> : null}
-                        {demandes.map((demande) => (
-                          <li key={demande.id}>
-                            <strong>#{demande.id}</strong> [{demande.status}] {demande.location} - {demande.description}
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-
-                    <section className="card stack">
-                      <div className="section-head">
-                        <h3>Services</h3>
-                        <span>{dashboardPending ? "Loading..." : "Synced"}</span>
-                      </div>
-                      <ul className="list clean-list">
-                        {services.length === 0 ? <li>No services yet.</li> : null}
-                        {services.map((service) => (
-                          <li key={service.id}>
-                            <strong>#{service.id}</strong> {service.name} - {service.price} (provider {service.prestataire_id})
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-                  </div>
-
-                  <div className="two-col">
-                    {canCreateDemande ? (
-                      <form className="card stack" onSubmit={handleCreateDemande}>
-                        <h3>Create request</h3>
-                        <label>
-                          <span>Description</span>
-                          <textarea name="description" required />
-                        </label>
-                        <label>
-                          <span>Location</span>
-                          <input type="text" name="location" required />
-                        </label>
-                        <button type="submit">Create request</button>
-                      </form>
-                    ) : (
-                      <section className="card stack muted-card">
-                        <h3>Requests</h3>
-                        <p>This role cannot create requests.</p>
-                      </section>
-                    )}
-
-                    {canCreateService ? (
-                      <form className="card stack" onSubmit={handleCreateService}>
-                        <h3>Create service</h3>
-                        <label>
-                          <span>Name</span>
-                          <input type="text" name="name" required />
-                        </label>
-                        <label>
-                          <span>Description</span>
-                          <textarea name="description" required />
-                        </label>
-                        <label>
-                          <span>Price</span>
-                          <input type="number" name="price" min="0" step="1" required />
-                        </label>
-                        <button type="submit">Create service</button>
-                      </form>
-                    ) : (
-                      <section className="card stack muted-card">
-                        <h3>Services</h3>
-                        <p>This role cannot create services.</p>
-                      </section>
-                    )}
-                  </div>
+                  <form className="card stack" onSubmit={(event) => void handleLogin(event, "admin")}>
+                    <h3>Admin login</h3>
+                    <label>
+                      <span>Phone</span>
+                      <input type="text" name="phone" required />
+                    </label>
+                    <label>
+                      <span>Password</span>
+                      <input type="password" name="password" required />
+                    </label>
+                    <button type="submit" disabled={loginPending}>
+                      {loginPending ? "Signing in..." : "Enter admin console"}
+                    </button>
+                  </form>
                 </section>
+              ) : role !== "admin" ? (
+                <Navigate to={roleHomePath(role)} replace />
+              ) : (
+                renderAdminWorkspace()
               )
             }
           />
-          <Route path="*" element={<Navigate to={isLoggedIn ? "/dashboard" : "/login"} replace />} />
+
+          <Route
+            path="/espace/client"
+            element={!isLoggedIn ? <Navigate to="/auth/client" replace /> : role !== "client" ? <Navigate to={roleHomePath(role)} replace /> : renderClientWorkspace()}
+          />
+
+          <Route
+            path="/espace/prestataire"
+            element={
+              !isLoggedIn ? <Navigate to="/auth/prestataire" replace /> : role !== "prestataire" ? <Navigate to={roleHomePath(role)} replace /> : renderPrestataireWorkspace()
+            }
+          />
+
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/dashboard" element={<Navigate to={isLoggedIn ? roleHomePath(role) : "/"} replace />} />
+          <Route path="*" element={<Navigate to={isLoggedIn ? roleHomePath(role) : "/"} replace />} />
         </Routes>
       </main>
 

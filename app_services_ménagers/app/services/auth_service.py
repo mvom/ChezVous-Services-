@@ -10,6 +10,12 @@ from app.schemas.user import LoginRequest, TokenResponse, UserCreate, UserRead, 
 
 class AuthService:
     def register(self, db: Session, payload: UserCreate) -> UserRead:
+        if payload.role == UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Creation de compte admin interdite via l'inscription publique",
+            )
+
         user = User(
             full_name=payload.full_name,
             phone=payload.phone,
