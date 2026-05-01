@@ -89,6 +89,9 @@ class Demande(Base):
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.user_id", ondelete="RESTRICT"))
     description: Mapped[str] = mapped_column(Text)
     location: Mapped[str] = mapped_column(String(255))
+    ville: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    arrondissement: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    quartier: Mapped[str | None] = mapped_column(String(120), nullable=True)
     priority: Mapped[str] = mapped_column(String(10), default="normale", server_default="normale", nullable=False)
     status: Mapped[DemandeStatus] = mapped_column(
         Enum(DemandeStatus, name="demande_status", create_constraint=False, values_callable=_enum_values),

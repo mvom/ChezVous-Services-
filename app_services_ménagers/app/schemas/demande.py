@@ -23,7 +23,10 @@ class DemandePriority(StrEnum):
 class DemandeCreate(AppBaseModel):
     client_id: int
     description: str = Field(min_length=5)
-    location: str = Field(min_length=3, max_length=255)
+    location: str | None = Field(default=None, min_length=3, max_length=255)
+    ville: str = Field(min_length=2, max_length=80)
+    arrondissement: str = Field(min_length=2, max_length=80)
+    quartier: str = Field(min_length=2, max_length=120)
     priority: DemandePriority = DemandePriority.NORMALE
 
 
@@ -46,6 +49,9 @@ class DemandeRead(AppBaseModel):
     client_id: int
     description: str
     location: str
+    ville: str | None = None
+    arrondissement: str | None = None
+    quartier: str | None = None
     priority: str = "normale"
     status: DemandeStatus
     created_at: datetime

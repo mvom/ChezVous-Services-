@@ -27,6 +27,9 @@ type Demande = {
   priority: string;
   description: string;
   location: string;
+  ville?: string | null;
+  arrondissement?: string | null;
+  quartier?: string | null;
   created_at: string;
   updated_at: string;
   events: DemandeEvent[];
@@ -73,6 +76,18 @@ type AuthMode = "login" | "register";
 
 type ClientStatusFilter = "all" | "ouverte" | "attribuee" | "annulee" | "expiree";
 type PrestataireStatusFilter = "all" | "ouverte" | "attribuee";
+
+function cleanGeo(value?: string | null): string {
+  return (value || "").trim();
+}
+
+function demandeGeoLabel(demande: Demande): string {
+  const parts = [cleanGeo(demande.ville), cleanGeo(demande.arrondissement), cleanGeo(demande.quartier)].filter(Boolean);
+  if (parts.length > 0) {
+    return parts.join(", ");
+  }
+  return (demande.location || "Localisation indisponible").trim();
+}
 
 const API_BASE = "http://localhost:8000/api/v1";
 const TOKEN_KEY = "sm_token";
@@ -309,6 +324,9 @@ function AppShell(): JSX.Element {
   const [clientStatusFilter, setClientStatusFilter] = useState<ClientStatusFilter>("all");
   const [clientQuery, setClientQuery] = useState("");
   const [prestataireStatusFilter, setPrestataireStatusFilter] = useState<PrestataireStatusFilter>("ouverte");
+  const [prestataireVilleFilter, setPrestataireVilleFilter] = useState("all");
+  const [prestataireArrondissementFilter, setPrestataireArrondissementFilter] = useState("all");
+  const [prestataireQuartierFilter, setPrestataireQuartierFilter] = useState("all");
   const [authModeByRole, setAuthModeByRole] = useState<Record<Extract<Role, "client" | "prestataire">, AuthMode>>({
     client: "register",
     prestataire: "register",
@@ -507,6 +525,9 @@ function AppShell(): JSX.Element {
 
     const form = event.currentTarget;
     const formData = new FormData(form);
+    const ville = String(formData.get("ville") || "").trim();
+    const arrondissement = String(formData.get("arrondissement") || "").trim();
+    const quartier = String(formData.get("quartier") || "").trim();
     try {
       await apiFetch<void>("/demandes", {
         method: "POST",
@@ -514,7 +535,10 @@ function AppShell(): JSX.Element {
         body: JSON.stringify({
           client_id: currentUserId(),
           description: String(formData.get("description") || ""),
-          location: String(formData.get("location") || ""),
+          location: [ville, arrondissement, quartier].filter(Boolean).join(", "),
+          ville,
+          arrondissement,
+          quartier,
           priority: String(formData.get("priority") || "normale"),
         }),
       });
@@ -787,6 +811,7 @@ function AppShell(): JSX.Element {
       const matchesStatus = clientStatusFilter === "all" || demande.status === clientStatusFilter;
       const matchesQuery =
         loweredQuery.length === 0 ||
+        demandeGeoLabel(demande).toLowerCase().includes(loweredQuery) ||
         demande.location.toLowerCase().includes(loweredQuery) ||
         demande.description.toLowerCase().includes(loweredQuery);
       return matchesStatus && matchesQuery;
@@ -960,7 +985,7 @@ function AppShell(): JSX.Element {
                         </div>
                       ))}
                     </div>
-                    <div className="demande-meta">{demande.location} — {demande.description}</div>
+                    <div className="demande-meta">{demandeGeoLabel(demande)} — {demande.description}</div>
                   </li>
                 );
               })}
@@ -1004,8 +1029,16 @@ function AppShell(): JSX.Element {
               <textarea name="description" required />
             </label>
             <label>
-              <span>Location</span>
-              <input type="text" name="location" required />
+              <span>Ville</span>
+              <input type="text" name="ville" placeholder="Ex: Douala" required />
+            </label>
+            <label>
+              <span>Arrondissement</span>
+              <input type="text" name="arrondissement" placeholder="Ex: Douala 5" required />
+            </label>
+            <label>
+              <span>Quartier</span>
+              <input type="text" name="quartier" placeholder="Ex: Makepe" required />
             </label>
             <label>
               <span>Priorité</span>
@@ -1032,11 +1065,29 @@ function AppShell(): JSX.Element {
     const providerMissions = missions.filter((mission) => mission.prestataire_id === userId);
     const activeProviderMissions = providerMissions.filter((mission) => mission.status === "en_cours").length;
     const completedProviderMissions = providerMissions.filter((mission) => mission.status === "terminee").length;
+    const allVilles = Array.from(new Set(demandes.map((d) => cleanGeo(d.ville)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    const demandesByVille =
+      prestataireVilleFilter === "all"
+        ? demandes
+        : demandes.filter((d) => cleanGeo(d.ville) === prestataireVilleFilter);
+    const allArrondissements = Array.from(new Set(demandesByVille.map((d) => cleanGeo(d.arrondissement)).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    const demandesByArrondissement =
+      prestataireArrondissementFilter === "all"
+        ? demandesByVille
+        : demandesByVille.filter((d) => cleanGeo(d.arrondissement) === prestataireArrondissementFilter);
+    const allQuartiers = Array.from(new Set(demandesByArrondissement.map((d) => cleanGeo(d.quartier)).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+
     const matchingDemandes = demandes.filter((demande) => {
-      if (prestataireStatusFilter === "all") {
-        return true;
-      }
-      return demande.status === prestataireStatusFilter;
+      const matchesStatus = prestataireStatusFilter === "all" || demande.status === prestataireStatusFilter;
+      const matchesVille = prestataireVilleFilter === "all" || cleanGeo(demande.ville) === prestataireVilleFilter;
+      const matchesArrondissement =
+        prestataireArrondissementFilter === "all" || cleanGeo(demande.arrondissement) === prestataireArrondissementFilter;
+      const matchesQuartier = prestataireQuartierFilter === "all" || cleanGeo(demande.quartier) === prestataireQuartierFilter;
+      return matchesStatus && matchesVille && matchesArrondissement && matchesQuartier;
     });
 
     const topOpportunities = matchingDemandes.slice(0, 3);
@@ -1112,6 +1163,42 @@ function AppShell(): JSX.Element {
           <button type="button" className="ghost" onClick={() => setPrestataireStatusFilter("all")}>Tout le marche</button>
         </div>
 
+        <div className="filter-row provider-filter-row">
+          <select
+            className="styled-select"
+            value={prestataireVilleFilter}
+            onChange={(event) => {
+              setPrestataireVilleFilter(event.target.value);
+              setPrestataireArrondissementFilter("all");
+              setPrestataireQuartierFilter("all");
+            }}
+          >
+            <option value="all">Toutes les villes</option>
+            {allVilles.map((ville) => (
+              <option key={ville} value={ville}>{ville}</option>
+            ))}
+          </select>
+          <select
+            className="styled-select"
+            value={prestataireArrondissementFilter}
+            onChange={(event) => {
+              setPrestataireArrondissementFilter(event.target.value);
+              setPrestataireQuartierFilter("all");
+            }}
+          >
+            <option value="all">Tous les arrondissements</option>
+            {allArrondissements.map((arr) => (
+              <option key={arr} value={arr}>{arr}</option>
+            ))}
+          </select>
+          <select className="styled-select" value={prestataireQuartierFilter} onChange={(event) => setPrestataireQuartierFilter(event.target.value)}>
+            <option value="all">Tous les quartiers</option>
+            {allQuartiers.map((quartier) => (
+              <option key={quartier} value={quartier}>{quartier}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="stats-grid">
           <article className="metric-card">
             <span>Open requests</span>
@@ -1143,7 +1230,7 @@ function AppShell(): JSX.Element {
                     <strong>Demande #{demande.id}</strong>
                     <span className={statusChipClass(demande.status)}>{demandeStatusLabel(demande.status)}</span>
                   </div>
-                  <div>{demande.location} - {demande.description}</div>
+                  <div>{demandeGeoLabel(demande)} - {demande.description}</div>
                 </li>
               ))}
             </ul>
@@ -1156,7 +1243,7 @@ function AppShell(): JSX.Element {
                     <strong>Demande #{demande.id}</strong>
                     <span className={statusChipClass(demande.status)}>{demandeStatusLabel(demande.status)}</span>
                   </div>
-                  <div>{demande.location} - {demande.description}</div>
+                  <div>{demandeGeoLabel(demande)} - {demande.description}</div>
                 </li>
               ))}
             </ul>
@@ -1341,7 +1428,7 @@ function AppShell(): JSX.Element {
               {demandes.length === 0 ? <li>No requests yet.</li> : null}
               {demandes.map((demande) => (
                 <li key={demande.id}>
-                  <strong>#{demande.id}</strong> [{demande.status}] {demande.location} - {demande.description}
+                  <strong>#{demande.id}</strong> [{demande.status}] {demandeGeoLabel(demande)} - {demande.description}
                 </li>
               ))}
             </ul>

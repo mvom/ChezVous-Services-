@@ -41,10 +41,18 @@ class DemandesService:
         if client is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client invalide")
 
+        ville = payload.ville.strip()
+        arrondissement = payload.arrondissement.strip()
+        quartier = payload.quartier.strip()
+        composed_location = ", ".join([ville, arrondissement, quartier])
+
         demande = Demande(
             client_id=payload.client_id,
             description=payload.description,
-            location=payload.location,
+            location=(payload.location or composed_location).strip(),
+            ville=ville,
+            arrondissement=arrondissement,
+            quartier=quartier,
             priority=payload.priority.value if hasattr(payload.priority, "value") else str(payload.priority),
             status=DemandeStatus.OUVERTE,
         )
