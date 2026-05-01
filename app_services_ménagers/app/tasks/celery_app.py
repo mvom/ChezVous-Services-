@@ -18,6 +18,12 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    beat_schedule={
+        "detect-delay-risk-every-10-min": {
+            "task": "app.tasks.detect_delay_risk",
+            "schedule": 600.0,
+        }
+    },
 )
 
 celery_app.autodiscover_tasks(["app.tasks"])

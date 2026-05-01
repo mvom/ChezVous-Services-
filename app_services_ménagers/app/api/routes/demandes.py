@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, require_roles
-from app.db.models import User
+from app.db.models import Demande, User
 from app.schemas.demande import DemandeClientUpdate, DemandeCreate, DemandeRead, DemandeUpdateStatus
 from app.schemas.matching import MatchingResult
 from app.schemas.user import UserRole
@@ -71,4 +71,11 @@ def get_matching_for_demande(
     Retourne les prestataires triés par score de compatibilité pour une demande donnée.
     Accessible au client propriétaire de la demande et à l'admin.
     """
+    demande = db.get(Demande, demande_id)
+    if demande is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Demande introuvable")
+
+    if current_user.role == UserRole.CLIENT and demande.client_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acces refuse a cette demande")
+
     return matching_service.get_matching(db, demande_id)

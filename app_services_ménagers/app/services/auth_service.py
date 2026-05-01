@@ -1,11 +1,11 @@
 from fastapi import HTTPException, status
-from sqlalchemy import or_
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, hash_password, verify_password
-from app.db.models import Client, Prestataire, User
+from app.db.models import Badge, Client, Prestataire, User
+from app.schemas.gamification import BadgeRead, LoyaltyRead
 from app.schemas.user import LoginRequest, TokenResponse, UnregisterRequest, UserCreate, UserRead, UserRole
 from app.services.mail_service import mail_service
 
@@ -99,6 +99,38 @@ class AuthService:
         db.delete(current_user)
         db.commit()
         return {"detail": "Compte supprime. Un email de confirmation a ete envoye."}
+
+    def get_client_loyalty(self, db: Session, current_user: User) -> LoyaltyRead:
+        client = db.get(Client, current_user.id)
+        if client is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profil client introuvable")
+
+        completed = int(client.completed_missions_count)
+        points = int(client.loyalty_points)
+        if completed < 5:
+            next_milestone = 5
+        elif completed < 10:
+            next_milestone = 10
+        elif completed < 20:
+            next_milestone = 20
+        else:
+            next_milestone = ((completed // 10) + 1) * 10
+
+        progress_percent = min(100, round((completed / next_milestone) * 100)) if next_milestone > 0 else 100
+        return LoyaltyRead(
+            loyalty_points=points,
+            completed_missions_count=completed,
+            next_milestone=next_milestone,
+            progress_percent=progress_percent,
+        )
+
+    def get_user_badges(self, db: Session, current_user: User) -> list[BadgeRead]:
+        badges = db.scalars(
+            select(Badge)
+            .where(Badge.user_id == current_user.id)
+            .order_by(Badge.awarded_at.desc(), Badge.id.desc())
+        ).all()
+        return [BadgeRead.model_validate(item) for item in badges]
 
 
 auth_service = AuthService()

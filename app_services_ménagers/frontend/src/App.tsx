@@ -105,6 +105,55 @@ type Mission = {
   prestataire_summary?: PrestataireMissionSummary | null;
 };
 
+type MatchingCandidate = {
+  user_id: number;
+  display_name: string;
+  avatar_url?: string | null;
+  trust: PrestataireTrust;
+  score_total: number;
+  score_zone: number;
+  score_rating: number;
+  score_completion: number;
+  score_response: number;
+  distance_km?: number | null;
+};
+
+type MatchingResult = {
+  demande_id: number;
+  available_count: number;
+  candidates: MatchingCandidate[];
+};
+
+type LoyaltyStats = {
+  loyalty_points: number;
+  completed_missions_count: number;
+  next_milestone: number;
+  progress_percent: number;
+};
+
+type BadgeRecord = {
+  id: number;
+  user_id: number;
+  slug: string;
+  awarded_at: string;
+};
+
+type AtRiskMission = {
+  mission_id: number;
+  demande_id: number;
+  client_id: number;
+  prestataire_id: number;
+  scheduled_at?: string | null;
+};
+
+type AtRiskResponse = {
+  status: string;
+  checked_at: string;
+  threshold_at: string;
+  count: number;
+  missions: AtRiskMission[];
+};
+
 type ToastState = {
   kind: "ok" | "err";
   message: string;
@@ -536,6 +585,19 @@ function trustBadgeTone(value: number): string {
   return "trust-badge trust-badge--soft";
 }
 
+function badgeLabel(slug: string): string {
+  if (slug === "mission-5") return "Rising Pro (5 missions)";
+  if (slug === "mission-10") return "Trusted Pro (10 missions)";
+  if (slug === "mission-20") return "Elite Pro (20 missions)";
+  return slug;
+}
+
+function scoreBarClass(value: number): string {
+  if (value >= 85) return "score-pill score-pill--strong";
+  if (value >= 60) return "score-pill score-pill--medium";
+  return "score-pill score-pill--soft";
+}
+
 function renderPrestataireTrust(summary?: PrestataireMissionSummary | null): JSX.Element | null {
   if (!summary) {
     return null;
@@ -627,6 +689,12 @@ function AppShell(): JSX.Element {
   const [cropTarget, setCropTarget] = useState<AvatarCropTarget | null>(null);
   const [cropPending, setCropPending] = useState(false);
   const [selectedDemandForDetail, setSelectedDemandForDetail] = useState<Demande | null>(null);
+  const [matchingByDemande, setMatchingByDemande] = useState<Record<number, MatchingResult>>({});
+  const [matchingLoadingByDemande, setMatchingLoadingByDemande] = useState<Record<number, boolean>>({});
+  const [matchingToastDemandes, setMatchingToastDemandes] = useState<number[]>([]);
+  const [clientLoyalty, setClientLoyalty] = useState<LoyaltyStats | null>(null);
+  const [userBadges, setUserBadges] = useState<BadgeRecord[]>([]);
+  const [adminAtRisk, setAdminAtRisk] = useState<AtRiskResponse | null>(null);
 
   useEffect(() => {
     if (!toast) {
@@ -647,6 +715,12 @@ function AppShell(): JSX.Element {
       setMissions([]);
       setUsers([]);
       setPrestataires([]);
+      setMatchingByDemande({});
+      setMatchingLoadingByDemande({});
+      setMatchingToastDemandes([]);
+      setClientLoyalty(null);
+      setUserBadges([]);
+      setAdminAtRisk(null);
       setUserProfile(null);
       window.localStorage.removeItem(TOKEN_KEY);
       navigate("/", { replace: true });
@@ -676,6 +750,25 @@ function AppShell(): JSX.Element {
     }
   }
 
+  async function loadClientMatchingPreview(nextToken: string, demandeId: number): Promise<void> {
+    if (!demandeId) {
+      return;
+    }
+    setMatchingLoadingByDemande((prev) => ({ ...prev, [demandeId]: true }));
+    try {
+      const result = await apiFetch<MatchingResult>(`/demandes/${demandeId}/matching`, { headers: authHeaders(nextToken) });
+      setMatchingByDemande((prev) => ({ ...prev, [demandeId]: result }));
+      if (result.available_count > 0 && !matchingToastDemandes.includes(demandeId)) {
+        setToast({ kind: "ok", message: `${result.available_count} prestataire(s) compatible(s) dans votre zone.` });
+        setMatchingToastDemandes((prev) => [...prev, demandeId]);
+      }
+    } catch {
+      // best effort widget
+    } finally {
+      setMatchingLoadingByDemande((prev) => ({ ...prev, [demandeId]: false }));
+    }
+  }
+
   async function refreshDashboard(nextClaims: JwtClaims, nextToken: string) {
     if (!nextClaims.sub) {
       return;
@@ -683,7 +776,7 @@ function AppShell(): JSX.Element {
 
     try {
       setDashboardPending(true);
-      const [nextDemandes, nextServices, nextMissions, nextUsers, nextPrestataires] = await Promise.all([
+      const [nextDemandes, nextServices, nextMissions, nextUsers, nextPrestataires, nextLoyalty, nextBadges, nextAtRisk] = await Promise.all([
         apiFetch<Demande[]>("/demandes", { headers: authHeaders(nextToken) }),
         apiFetch<Service[]>("/services", { headers: authHeaders(nextToken) }),
         apiFetch<Mission[]>("/missions", { headers: authHeaders(nextToken) }),
@@ -693,12 +786,35 @@ function AppShell(): JSX.Element {
         nextClaims.role === "admin"
           ? apiFetch<PrestataireRecord[]>("/prestataires", { headers: authHeaders(nextToken) })
           : Promise.resolve([] as PrestataireRecord[]),
+        nextClaims.role === "client"
+          ? apiFetch<LoyaltyStats>("/auth/me/loyalty", { headers: authHeaders(nextToken) })
+          : Promise.resolve(null),
+        nextClaims.role === "client" || nextClaims.role === "prestataire"
+          ? apiFetch<BadgeRecord[]>("/auth/me/badges", { headers: authHeaders(nextToken) })
+          : Promise.resolve([] as BadgeRecord[]),
+        nextClaims.role === "admin"
+          ? apiFetch<AtRiskResponse>("/missions/at-risk", { headers: authHeaders(nextToken) }).catch(() => null)
+          : Promise.resolve(null),
       ]);
       setDemandes(nextDemandes);
       setServices(nextServices);
       setMissions(nextMissions);
       setUsers(nextUsers);
       setPrestataires(nextPrestataires);
+      setClientLoyalty(nextLoyalty);
+      setUserBadges(nextBadges);
+      setAdminAtRisk(nextAtRisk);
+
+      if (nextClaims.role === "client") {
+        const ownOpenDemandes = nextDemandes
+          .filter((d) => d.client_id === Number(nextClaims.sub) && d.status === "ouverte")
+          .sort((a, b) => b.id - a.id);
+        const recentOpenDemande = ownOpenDemandes[0];
+        if (recentOpenDemande) {
+          void loadClientMatchingPreview(nextToken, recentOpenDemande.id);
+        }
+      }
+
       navigate(roleHomePath(nextClaims.role), { replace: true });
       void fetchUserProfile(nextToken);
     } catch (error) {
@@ -1465,6 +1581,12 @@ function AppShell(): JSX.Element {
     const nextScheduledMission = [...clientMissions]
       .filter((mission) => mission.scheduled_at)
       .sort((a, b) => new Date(a.scheduled_at as string).getTime() - new Date(b.scheduled_at as string).getTime())[0];
+    const latestOpenDemande = [...clientDemandes]
+      .filter((demande) => demande.status === "ouverte")
+      .sort((a, b) => b.id - a.id)[0];
+    const matchingPreview = latestOpenDemande ? matchingByDemande[latestOpenDemande.id] : null;
+    const matchingPreviewPending = latestOpenDemande ? Boolean(matchingLoadingByDemande[latestOpenDemande.id]) : false;
+    const topCandidates = matchingPreview?.candidates?.slice(0, 3) || [];
 
     const lastDraftRaw = window.localStorage.getItem(DEMANDE_DRAFT_KEY);
     let lastDraft: {
@@ -1621,6 +1743,71 @@ function AppShell(): JSX.Element {
             </div>
           </div>
         </section>
+
+        <div className="two-col">
+          <section className="card stack matching-widget-card">
+            <div className="section-head">
+              <h3>Matching intelligent</h3>
+              <span>{matchingPreviewPending ? "Analyse..." : "Temps reel"}</span>
+            </div>
+            {!latestOpenDemande ? <p className="helper-line">Publiez une demande pour voir les prestataires compatibles.</p> : null}
+            {latestOpenDemande ? (
+              <div className="matching-widget-head">
+                <strong>Demande #{latestOpenDemande.id}</strong>
+                <button
+                  type="button"
+                  className="ghost inline-ghost"
+                  onClick={() => void loadClientMatchingPreview(token, latestOpenDemande.id)}
+                  disabled={matchingPreviewPending}
+                >
+                  {matchingPreviewPending ? "Actualisation..." : "Actualiser"}
+                </button>
+              </div>
+            ) : null}
+            {latestOpenDemande && !matchingPreviewPending && matchingPreview ? (
+              <p className="helper-line">{matchingPreview.available_count} prestataire(s) compatible(s) detecte(s).</p>
+            ) : null}
+            <ul className="list clean-list compact-list matching-candidates-list">
+              {matchingPreviewPending ? renderSkeletonList("client-matching", 2) : null}
+              {!matchingPreviewPending && latestOpenDemande && topCandidates.length === 0 ? <li>Aucun candidat pour le moment.</li> : null}
+              {!matchingPreviewPending && topCandidates.map((candidate) => (
+                <li key={`match-${candidate.user_id}`}>
+                  <div className="matching-candidate-head">
+                    <strong>{candidate.display_name}</strong>
+                    <span className={scoreBarClass(candidate.score_total)}>{candidate.score_total}/100</span>
+                  </div>
+                  <div className="matching-candidate-meta">
+                    Zone {candidate.score_zone} | Note {candidate.score_rating} | Fiabilite {candidate.score_completion}
+                  </div>
+                  <div className="matching-candidate-meta">
+                    {candidate.distance_km != null ? `Distance estimee: ${candidate.distance_km.toFixed(1)} km` : "Distance: en cours d'estimation"}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="card stack loyalty-gauge-card">
+            <div className="section-head">
+              <h3>Fidelite client</h3>
+              <span>{clientLoyalty ? `${clientLoyalty.loyalty_points} pts` : "N/A"}</span>
+            </div>
+            <div className="loyalty-gauge-track">
+              <div
+                className="loyalty-gauge-fill"
+                style={{ width: `${Math.max(0, Math.min(100, clientLoyalty?.progress_percent || 0))}%` }}
+              />
+            </div>
+            <div className="loyalty-gauge-meta">
+              <strong>{clientLoyalty ? `${clientLoyalty.completed_missions_count} missions terminees` : "0 mission"}</strong>
+              <span>
+                {clientLoyalty
+                  ? `Prochain palier: ${clientLoyalty.next_milestone} missions`
+                  : "Terminez des missions pour debloquer vos recompenses."}
+              </span>
+            </div>
+          </section>
+        </div>
 
         <div className="stats-grid">
           <article className={`metric-card ${dashboardPending ? "skeleton-card" : ""}`}>
@@ -1950,6 +2137,17 @@ function AppShell(): JSX.Element {
     const shownClosingMissions = closingMissions.filter(keepMission).slice(0, pipelineVisibleCount);
     const pipelineCardCount =
       shownOpportunities.length + shownConfirmMissions.length + shownActiveMissions.length + shownClosingMissions.length;
+    const atRiskProviderMissions = providerMissions.filter((mission) => {
+      if (mission.status !== "en_cours" || !mission.scheduled_at) {
+        return false;
+      }
+      const scheduledAt = Date.parse(mission.scheduled_at);
+      if (Number.isNaN(scheduledAt)) {
+        return false;
+      }
+      const twoHoursFromNow = Date.now() + 2 * 60 * 60 * 1000;
+      return scheduledAt <= twoHoursFromNow;
+    });
     const recommendation =
       ownServices.length === 0
         ? {
@@ -2030,6 +2228,24 @@ function AppShell(): JSX.Element {
             </button>
           </div>
         </section>
+
+        {atRiskProviderMissions.length > 0 ? (
+          <section className="card risk-banner risk-banner--provider">
+            <div className="risk-banner__head">
+              <h3>At-risk: intervention a surveiller</h3>
+              <span>{atRiskProviderMissions.length} mission(s) proche(s) d'echeance</span>
+            </div>
+            <ul className="risk-banner__list">
+              {atRiskProviderMissions.slice(0, 4).map((mission) => (
+                <li key={mission.id} className="risk-banner__item">
+                  <strong>Mission #{mission.id}</strong>
+                  <span>Demande #{mission.demande_id}</span>
+                  <span>Echeance: {formatDateTime(mission.scheduled_at || undefined)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         <section className="card recommendation-card provider-reco">
           <div>
@@ -2116,6 +2332,23 @@ function AppShell(): JSX.Element {
               <span>Revenus du mois</span>
             </div>
           </div>
+        </section>
+
+        <section className="card stack badges-section-card">
+          <div className="section-head">
+            <h3>Mes badges</h3>
+            <span>{dashboardPending ? "Loading..." : `${userBadges.length} badge(s)`}</span>
+          </div>
+          <ul className="badges-grid clean-list">
+            {dashboardPending ? renderSkeletonList("provider-badges", 2) : null}
+            {!dashboardPending && userBadges.length === 0 ? <li>Aucun badge pour l'instant. Continuez vos missions.</li> : null}
+            {!dashboardPending && userBadges.map((badge) => (
+              <li key={`badge-${badge.id}`} className="badge-chip">
+                <strong>{badgeLabel(badge.slug)}</strong>
+                <span>Attribue le {formatDateTime(badge.awarded_at)}</span>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <div className="two-col">
@@ -2363,6 +2596,7 @@ function AppShell(): JSX.Element {
     const activeMissionsAdmin = missions.filter((mission) => mission.status === "en_cours").length;
     const verifiedProviders = providerRows.filter((row) => row.provider?.verified).length;
     const pendingVerification = providerRows.length - verifiedProviders;
+    const atRiskAdminMissions = adminAtRisk?.missions ?? [];
 
     return (
       <section className="panel dashboard-panel">
@@ -2399,6 +2633,25 @@ function AppShell(): JSX.Element {
             </button>
           </div>
         </section>
+
+        {atRiskAdminMissions.length > 0 ? (
+          <section className="card risk-banner risk-banner--admin">
+            <div className="risk-banner__head">
+              <h3>At-risk: missions en cours proches de l'horaire prevu</h3>
+              <span>{atRiskAdminMissions.length} mission(s) detectee(s)</span>
+            </div>
+            <ul className="risk-banner__list">
+              {atRiskAdminMissions.slice(0, 6).map((item) => (
+                <li key={item.mission_id} className="risk-banner__item">
+                  <strong>Mission #{item.mission_id}</strong>
+                  <span>Demande #{item.demande_id}</span>
+                  <span>Prestataire #{item.prestataire_id}</span>
+                  <span>Echeance: {formatDateTime(item.scheduled_at || undefined)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         <div className="quick-actions">
           <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>Refresh</button>

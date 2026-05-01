@@ -15,6 +15,7 @@ from app.schemas.mission import (
     PrestataireTrustRead,
 )
 from app.services.demandes_service import record_demande_event
+from app.tasks.tasks import award_badges, loyalty_credit
 
 
 def _provider_display_name(user: User | None, prestataire_id: int) -> str:
@@ -182,6 +183,8 @@ class MissionsService:
             return _mission_to_read(db, mission, _build_prestataire_summaries(db, [mission]))
 
         mission.status = new_status
+        if new_status != MissionStatus.EN_COURS:
+            mission.at_risk = False
 
         if new_status in (MissionStatus.EN_COURS, MissionStatus.TERMINEE):
             demande = db.get(Demande, mission.demande_id)
@@ -197,6 +200,11 @@ class MissionsService:
 
         db.commit()
         db.refresh(mission)
+
+        if new_status == MissionStatus.TERMINEE and previous_status != MissionStatus.TERMINEE:
+            award_badges.delay(mission.prestataire_id)
+            loyalty_credit.delay(mission.client_id, mission.id)
+
         return _mission_to_read(db, mission, _build_prestataire_summaries(db, [mission]))
 
 

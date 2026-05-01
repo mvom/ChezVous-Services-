@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, require_roles
 from app.db.models import User
+from app.schemas.gamification import BadgeRead, LoyaltyRead
 from app.schemas.user import AvatarUpdate, LoginRequest, TokenResponse, UnregisterRequest, UserCreate, UserRead, UserRole
 from app.services.auth_service import auth_service
 
@@ -40,6 +41,22 @@ def unregister(
 @router.get("/me", response_model=UserRead)
 def get_me(current_user: User = Depends(get_current_user)) -> UserRead:
     return current_user
+
+
+@router.get("/me/loyalty", response_model=LoyaltyRead)
+def get_me_loyalty(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.CLIENT)),
+) -> LoyaltyRead:
+    return auth_service.get_client_loyalty(db, current_user)
+
+
+@router.get("/me/badges", response_model=list[BadgeRead])
+def get_me_badges(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[BadgeRead]:
+    return auth_service.get_user_badges(db, current_user)
 
 
 @router.patch("/me/avatar", response_model=UserRead)

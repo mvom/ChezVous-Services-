@@ -3,9 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, require_roles
 from app.db.models import User
-from app.schemas.mission import MissionCreate, MissionRead, MissionUpdateStatus
+from app.schemas.mission import MissionAtRiskRead, MissionCreate, MissionRead, MissionUpdateStatus
 from app.schemas.user import UserRole
 from app.services.missions_service import missions_service
+from app.tasks.tasks import sync_delay_risk_flags
 
 
 router = APIRouter(prefix="/missions", tags=["Missions"])
@@ -28,6 +29,14 @@ def list_missions(
     _: User = Depends(get_current_user),
 ) -> list[MissionRead]:
     return missions_service.list_missions(db)
+
+
+@router.get("/at-risk", response_model=MissionAtRiskRead)
+def list_at_risk_missions(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(UserRole.ADMIN)),
+) -> MissionAtRiskRead:
+    return MissionAtRiskRead.model_validate(sync_delay_risk_flags(db))
 
 
 @router.patch("/{mission_id}/status", response_model=MissionRead)

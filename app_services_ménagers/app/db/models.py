@@ -129,6 +129,7 @@ class Mission(Base):
         Enum(MissionStatus, name="mission_status", create_constraint=False, values_callable=_enum_values),
         default=MissionStatus.EN_ATTENTE,
     )
+    at_risk: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

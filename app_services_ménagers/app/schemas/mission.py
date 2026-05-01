@@ -53,7 +53,24 @@ class MissionRead(AppBaseModel):
     prestataire_id: int
     service_id: Optional[int]
     status: MissionStatus
+    at_risk: bool = False
     scheduled_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     prestataire_summary: PrestataireMissionSummaryRead | None = None
+
+
+class MissionAtRiskItemRead(AppBaseModel):
+    mission_id: int
+    demande_id: int
+    client_id: int
+    prestataire_id: int
+    scheduled_at: datetime | None = None
+
+
+class MissionAtRiskRead(AppBaseModel):
+    status: str
+    checked_at: datetime
+    threshold_at: datetime
+    count: int
+    missions: list[MissionAtRiskItemRead] = Field(default_factory=list)
