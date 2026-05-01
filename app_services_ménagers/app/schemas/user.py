@@ -120,6 +120,11 @@ class UserRead(AppBaseModel):
     address: str
     phone: str
     role: UserRole
+    avatar_url: str | None = None
+
+
+class AvatarUpdate(AppBaseModel):
+    avatar_url: str
 
 
 class LoginRequest(AppBaseModel):

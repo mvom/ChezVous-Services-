@@ -45,6 +45,7 @@ class DemandesService:
             client_id=payload.client_id,
             description=payload.description,
             location=payload.location,
+            priority=payload.priority.value if hasattr(payload.priority, "value") else str(payload.priority),
             status=DemandeStatus.OUVERTE,
         )
         db.add(demande)

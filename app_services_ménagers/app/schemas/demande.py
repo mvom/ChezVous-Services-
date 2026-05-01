@@ -14,10 +14,17 @@ class DemandeStatus(StrEnum):
     EXPIREE = "expiree"
 
 
+class DemandePriority(StrEnum):
+    HAUTE = "haute"
+    NORMALE = "normale"
+    BASSE = "basse"
+
+
 class DemandeCreate(AppBaseModel):
     client_id: int
     description: str = Field(min_length=5)
     location: str = Field(min_length=3, max_length=255)
+    priority: DemandePriority = DemandePriority.NORMALE
 
 
 class DemandeUpdateStatus(AppBaseModel):
@@ -39,6 +46,7 @@ class DemandeRead(AppBaseModel):
     client_id: int
     description: str
     location: str
+    priority: str = "normale"
     status: DemandeStatus
     created_at: datetime
     updated_at: datetime

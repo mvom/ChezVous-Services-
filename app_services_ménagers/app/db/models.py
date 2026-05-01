@@ -32,6 +32,7 @@ class User(Base):
     address: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(30))
     password_hash: Mapped[str] = mapped_column(String(255))
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role", create_constraint=False, values_callable=_enum_values)
     )
@@ -88,6 +89,7 @@ class Demande(Base):
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.user_id", ondelete="RESTRICT"))
     description: Mapped[str] = mapped_column(Text)
     location: Mapped[str] = mapped_column(String(255))
+    priority: Mapped[str] = mapped_column(String(10), default="normale", server_default="normale", nullable=False)
     status: Mapped[DemandeStatus] = mapped_column(
         Enum(DemandeStatus, name="demande_status", create_constraint=False, values_callable=_enum_values),
         default=DemandeStatus.OUVERTE,
@@ -115,6 +117,7 @@ class Mission(Base):
         Enum(MissionStatus, name="mission_status", create_constraint=False, values_callable=_enum_values),
         default=MissionStatus.EN_ATTENTE,
     )
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

@@ -36,5 +36,6 @@ class MissionRead(AppBaseModel):
     prestataire_id: int
     service_id: Optional[int]
     status: MissionStatus
+    scheduled_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

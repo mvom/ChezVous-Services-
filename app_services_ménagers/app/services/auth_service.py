@@ -76,7 +76,7 @@ class AuthService:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Identifiants invalides",
             )
-        token = create_access_token(user_id=user.id, role=user.role.value)
+        token = create_access_token(user_id=user.id, role=user.role.value, username=user.username)
         return TokenResponse(access_token=token)
 
     def list_users(self, db: Session) -> list[UserRead]:
