@@ -1,5 +1,7 @@
-from sqlalchemy import Boolean, Enum, ForeignKey, Numeric, String, Text, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.schemas.demande import DemandeStatus
 from app.schemas.mission import MissionStatus
@@ -58,6 +60,25 @@ class Service(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     price: Mapped[float] = mapped_column(Numeric(12, 2))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class DemandeEvent(Base):
+    __tablename__ = "demande_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    demande_id: Mapped[int] = mapped_column(ForeignKey("demandes.id", ondelete="CASCADE"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    new_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    demande: Mapped["Demande"] = relationship(back_populates="events")
 
 
 class Demande(Base):
@@ -70,6 +91,15 @@ class Demande(Base):
     status: Mapped[DemandeStatus] = mapped_column(
         Enum(DemandeStatus, name="demande_status", create_constraint=False, values_callable=_enum_values),
         default=DemandeStatus.OUVERTE,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    events: Mapped[list[DemandeEvent]] = relationship(
+        back_populates="demande",
+        cascade="all, delete-orphan",
+        order_by=lambda: (DemandeEvent.created_at.asc(), DemandeEvent.id.asc()),
     )
 
 
@@ -84,6 +114,10 @@ class Mission(Base):
     status: Mapped[MissionStatus] = mapped_column(
         Enum(MissionStatus, name="mission_status", create_constraint=False, values_callable=_enum_values),
         default=MissionStatus.EN_ATTENTE,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
 

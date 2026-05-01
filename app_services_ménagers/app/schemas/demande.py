@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from enum import StrEnum
 
 from pydantic import Field
@@ -22,9 +24,22 @@ class DemandeUpdateStatus(AppBaseModel):
     status: DemandeStatus
 
 
+class DemandeEventRead(AppBaseModel):
+    id: int
+    event_type: str
+    previous_status: str | None = None
+    new_status: str | None = None
+    actor_user_id: int | None = None
+    actor_label: str | None = None
+    created_at: datetime
+
+
 class DemandeRead(AppBaseModel):
     id: int
     client_id: int
     description: str
     location: str
     status: DemandeStatus
+    created_at: datetime
+    updated_at: datetime
+    events: list[DemandeEventRead] = Field(default_factory=list)

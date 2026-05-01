@@ -19,7 +19,7 @@ def create_demande(
 ) -> DemandeRead:
     if current_user.role == UserRole.CLIENT and payload.client_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="client_id invalide")
-    return demandes_service.create_demande(db, payload)
+    return demandes_service.create_demande(db, payload, actor_user=current_user)
 
 
 @router.get("", response_model=list[DemandeRead])
@@ -35,6 +35,6 @@ def update_demande_status(
     demande_id: int,
     payload: DemandeUpdateStatus,
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles(UserRole.PRESTATAIRE, UserRole.ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.PRESTATAIRE, UserRole.ADMIN)),
 ) -> DemandeRead:
-    return demandes_service.update_status(db, demande_id, payload.status)
+    return demandes_service.update_status(db, demande_id, payload.status, actor_user=current_user)

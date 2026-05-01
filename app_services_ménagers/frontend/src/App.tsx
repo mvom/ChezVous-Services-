@@ -16,9 +16,23 @@ type LoginResponse = {
 
 type Demande = {
   id: number;
+  client_id: number;
   status: string;
   description: string;
   location: string;
+  created_at: string;
+  updated_at: string;
+  events: DemandeEvent[];
+};
+
+type DemandeEvent = {
+  id: number;
+  event_type: string;
+  previous_status?: string | null;
+  new_status?: string | null;
+  actor_user_id?: number | null;
+  actor_label?: string | null;
+  created_at: string;
 };
 
 type Service = {
@@ -27,6 +41,19 @@ type Service = {
   name: string;
   description: string;
   price: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type Mission = {
+  id: number;
+  demande_id: number;
+  client_id: number;
+  prestataire_id: number;
+  service_id?: number | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
 };
 
 type ToastState = {
@@ -113,6 +140,92 @@ function normalizePersonName(value: string): string {
     .join(" ");
 }
 
+function userFacingError(error: unknown, fallbackMessage: string, context: string): string {
+  if (!(error instanceof Error)) {
+    return fallbackMessage;
+  }
+
+  console.error(`[debug:${context}]`, error);
+
+  const rawMessage = (error.message || "").trim();
+  if (!rawMessage) {
+    return fallbackMessage;
+  }
+
+  const lowered = rawMessage.toLowerCase();
+  if (lowered.includes("cannot read properties of null") || lowered.includes("cannot read property")) {
+    return fallbackMessage;
+  }
+
+  return rawMessage;
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) {
+    return "Date indisponible";
+  }
+  const asDate = new Date(value);
+  if (Number.isNaN(asDate.getTime())) {
+    return "Date indisponible";
+  }
+  return asDate.toLocaleString("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function demandeStatusTone(status: string): "green" | "blue" | "orange" | "gray" {
+  if (status === "ouverte") {
+    return "green";
+  }
+  if (status === "attribuee") {
+    return "blue";
+  }
+  if (status === "annulee") {
+    return "orange";
+  }
+  return "gray";
+}
+
+function formatStatusLabel(status?: string | null): string {
+  if (!status) {
+    return "statut inconnu";
+  }
+  return status.replace(/_/g, " ");
+}
+
+function demandeEventText(event: DemandeEvent): string {
+  if (event.event_type === "cree") {
+    return "Demande creee";
+  }
+  if (event.event_type === "attribuee") {
+    return "Demande attribuee";
+  }
+  if (event.event_type === "en_cours") {
+    return "Mission en cours";
+  }
+  if (event.event_type === "terminee") {
+    return "Mission terminee";
+  }
+  if (event.previous_status && event.new_status) {
+    return `Transition: ${formatStatusLabel(event.previous_status)} -> ${formatStatusLabel(event.new_status)}`;
+  }
+  if (event.new_status) {
+    return `Statut: ${formatStatusLabel(event.new_status)}`;
+  }
+  return formatStatusLabel(event.event_type);
+}
+
+function demandeEventActor(event: DemandeEvent): string {
+  if (event.actor_label) {
+    return event.actor_label;
+  }
+  if (event.actor_user_id) {
+    return `Utilisateur #${event.actor_user_id}`;
+  }
+  return "Systeme";
+}
+
 function AppShell(): JSX.Element {
   const navigate = useNavigate();
   const [token, setToken] = useState<string>(() => window.localStorage.getItem(TOKEN_KEY) || "");
@@ -123,6 +236,7 @@ function AppShell(): JSX.Element {
   const [dashboardPending, setDashboardPending] = useState(false);
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [missions, setMissions] = useState<Mission[]>([]);
   const [authModeByRole, setAuthModeByRole] = useState<Record<Extract<Role, "client" | "prestataire">, AuthMode>>({
     client: "register",
     prestataire: "register",
@@ -144,6 +258,7 @@ function AppShell(): JSX.Element {
     if (!token || !nextClaims) {
       setDemandes([]);
       setServices([]);
+      setMissions([]);
       window.localStorage.removeItem(TOKEN_KEY);
       navigate("/", { replace: true });
       return;
@@ -160,12 +275,14 @@ function AppShell(): JSX.Element {
 
     try {
       setDashboardPending(true);
-      const [nextDemandes, nextServices] = await Promise.all([
+      const [nextDemandes, nextServices, nextMissions] = await Promise.all([
         apiFetch<Demande[]>("/demandes", { headers: authHeaders(nextToken) }),
         apiFetch<Service[]>("/services", { headers: authHeaders(nextToken) }),
+        apiFetch<Mission[]>("/missions", { headers: authHeaders(nextToken) }),
       ]);
       setDemandes(nextDemandes);
       setServices(nextServices);
+      setMissions(nextMissions);
       navigate(roleHomePath(nextClaims.role), { replace: true });
     } catch (error) {
       setToken("");
@@ -186,7 +303,8 @@ function AppShell(): JSX.Element {
 
   async function handleLogin(event: FormEvent<HTMLFormElement>, expectedRole?: Role) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
 
     try {
       setLoginPending(true);
@@ -207,9 +325,9 @@ function AppShell(): JSX.Element {
         throw new Error("This account is not allowed on this access page");
       }
 
+      form.reset();
       setToken(result.access_token);
       setToast({ kind: "ok", message: "Login successful" });
-      event.currentTarget.reset();
     } catch (error) {
       setToast({ kind: "err", message: error instanceof Error ? error.message : "Login failed" });
     } finally {
@@ -222,6 +340,7 @@ function AppShell(): JSX.Element {
     const formData = new FormData(event.currentTarget);
     const password = String(formData.get("password") || "");
     const passwordConfirmation = String(formData.get("password_confirmation") || "");
+    const normalizedPhone = formatCameroonPhone(String(formData.get("phone") || ""));
 
     if (password !== passwordConfirmation) {
       setToast({ kind: "err", message: "Les deux mots de passe ne correspondent pas." });
@@ -239,16 +358,33 @@ function AppShell(): JSX.Element {
           username: String(formData.get("username") || "").trim().toLowerCase(),
           email: String(formData.get("email") || "").trim().toLowerCase(),
           address: String(formData.get("address") || "").trim(),
-          phone: formatCameroonPhone(String(formData.get("phone") || "")),
+          phone: normalizedPhone,
           password,
           role,
         }),
       });
-      setToast({ kind: "ok", message: "Compte cree. Verifiez le mail de confirmation puis connectez-vous." });
+
+      const loginResult = await apiFetch<LoginResponse>("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: normalizedPhone,
+          password,
+        }),
+      });
+
+      setToken(loginResult.access_token);
+      setToast({ kind: "ok", message: "Inscription reussie. Redirection vers votre tableau de bord..." });
       event.currentTarget.reset();
-      setAuthModeByRole((prev) => ({ ...prev, [role]: "login" }));
     } catch (error) {
-      setToast({ kind: "err", message: error instanceof Error ? error.message : "Registration failed" });
+      setToast({
+        kind: "err",
+        message: userFacingError(
+          error,
+          "Inscription enregistree, mais la redirection vers le tableau de bord a echoue. Rechargez la page.",
+          "register"
+        ),
+      });
     } finally {
       setRegisterPending(false);
     }
@@ -305,7 +441,14 @@ function AppShell(): JSX.Element {
         await refreshDashboard(claims, token);
       }
     } catch (error) {
-      setToast({ kind: "err", message: error instanceof Error ? error.message : "Service creation failed" });
+      setToast({
+        kind: "err",
+        message: userFacingError(
+          error,
+          "Le service est enregistre, mais l'actualisation de l'ecran a echoue. Cliquez sur Refresh.",
+          "create-service"
+        ),
+      });
     }
   }
 
@@ -337,6 +480,7 @@ function AppShell(): JSX.Element {
     setClaims(null);
     setDemandes([]);
     setServices([]);
+    setMissions([]);
     window.localStorage.removeItem(TOKEN_KEY);
   }
 
@@ -471,6 +615,9 @@ function AppShell(): JSX.Element {
   }
 
   function renderClientWorkspace(): JSX.Element {
+    const clientDemandes = demandes.filter((demande) => demande.client_id === userId);
+    const clientMissions = missions.filter((mission) => mission.client_id === userId);
+
     return (
       <section className="panel dashboard-panel">
         <div className="dashboard-title">
@@ -494,15 +641,15 @@ function AppShell(): JSX.Element {
         <div className="stats-grid">
           <article className="metric-card">
             <span>My requests</span>
-            <strong>{demandes.length}</strong>
+            <strong>{clientDemandes.length}</strong>
           </article>
           <article className="metric-card">
             <span>Available services</span>
             <strong>{services.length}</strong>
           </article>
           <article className="metric-card wide">
-            <span>Workspace</span>
-            <strong>Client</strong>
+            <span>Services history</span>
+            <strong>{clientMissions.length}</strong>
           </article>
         </div>
 
@@ -513,10 +660,37 @@ function AppShell(): JSX.Element {
               <span>{dashboardPending ? "Loading..." : "Synced"}</span>
             </div>
             <ul className="list clean-list">
-              {demandes.length === 0 ? <li>No requests yet.</li> : null}
-              {demandes.map((demande) => (
+              {clientDemandes.length === 0 ? <li>No requests yet.</li> : null}
+              {clientDemandes.map((demande) => (
                 <li key={demande.id}>
-                  <strong>#{demande.id}</strong> [{demande.status}] {demande.location} - {demande.description}
+                  <div className={`status-line ${demandeStatusTone(demande.status)}`}>
+                    <span className="status-dot" />
+                    <strong>Demande #{demande.id}</strong>
+                    <span className="status-chip">{demande.status}</span>
+                  </div>
+                  <ul className="event-timeline">
+                    {(demande.events && demande.events.length > 0
+                      ? demande.events
+                      : [
+                          {
+                            id: -demande.id,
+                            event_type: "cree",
+                            created_at: demande.created_at,
+                          } as DemandeEvent,
+                        ]
+                    ).map((event) => (
+                      <li key={event.id} className="timeline-item">
+                        <span className="timeline-item__bullet" />
+                        <div>
+                          <div className="timeline-line">
+                            <strong>{demandeEventText(event)}</strong> - {demandeEventActor(event)}
+                          </div>
+                          <div className="timeline-line">{formatDateTime(event.created_at)}</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <div>{demande.location} - {demande.description}</div>
                 </li>
               ))}
             </ul>
@@ -524,14 +698,21 @@ function AppShell(): JSX.Element {
 
           <section className="card stack">
             <div className="section-head">
-              <h3>Provider catalog</h3>
+              <h3>Historique des services rendus</h3>
               <span>{dashboardPending ? "Loading..." : "Synced"}</span>
             </div>
             <ul className="list clean-list">
-              {services.length === 0 ? <li>No services yet.</li> : null}
-              {services.map((service) => (
-                <li key={service.id}>
-                  <strong>#{service.id}</strong> {service.name} - {service.price} (provider {service.prestataire_id})
+              {clientMissions.length === 0 ? <li>Aucun service rendu pour le moment.</li> : null}
+              {clientMissions.map((mission) => (
+                <li key={mission.id}>
+                  <div className="status-line blue">
+                    <span className="status-dot" />
+                    <strong>Mission #{mission.id}</strong>
+                    <span className="status-chip">{mission.status}</span>
+                  </div>
+                  <div className="timeline-line">Demande #{mission.demande_id} - Prestataire #{mission.prestataire_id}</div>
+                  <div className="timeline-line">Creation: {formatDateTime(mission.created_at)}</div>
+                  <div className="timeline-line">Derniere mise a jour: {formatDateTime(mission.updated_at)}</div>
                 </li>
               ))}
             </ul>

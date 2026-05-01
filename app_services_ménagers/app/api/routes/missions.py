@@ -19,7 +19,7 @@ def create_mission(
 ) -> MissionRead:
     if current_user.role == UserRole.PRESTATAIRE and payload.prestataire_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="prestataire_id invalide")
-    return missions_service.create_mission(db, payload)
+    return missions_service.create_mission(db, payload, actor_user=current_user)
 
 
 @router.get("", response_model=list[MissionRead])
@@ -35,6 +35,6 @@ def update_mission_status(
     mission_id: int,
     payload: MissionUpdateStatus,
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles(UserRole.CLIENT, UserRole.PRESTATAIRE, UserRole.ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.CLIENT, UserRole.PRESTATAIRE, UserRole.ADMIN)),
 ) -> MissionRead:
-    return missions_service.update_status(db, mission_id, payload.status)
+    return missions_service.update_status(db, mission_id, payload.status, actor_user=current_user)

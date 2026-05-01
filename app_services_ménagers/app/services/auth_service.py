@@ -66,7 +66,12 @@ class AuthService:
 
     def login(self, db: Session, payload: LoginRequest) -> TokenResponse:
         user = db.scalar(select(User).where(or_(User.phone == payload.phone, User.username == payload.phone)))
-        if user is None or not verify_password(payload.password, user.password_hash):
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Vous n'avez pas encore de compte. Inscrivez-vous d'abord.",
+            )
+        if not verify_password(payload.password, user.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Identifiants invalides",

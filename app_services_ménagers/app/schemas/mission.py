@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from enum import StrEnum
 from typing import Optional
 
@@ -34,3 +36,5 @@ class MissionRead(AppBaseModel):
     prestataire_id: int
     service_id: Optional[int]
     status: MissionStatus
+    created_at: datetime
+    updated_at: datetime

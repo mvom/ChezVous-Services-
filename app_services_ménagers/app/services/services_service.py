@@ -25,7 +25,7 @@ class ServicesService:
         return ServiceRead.model_validate(service)
 
     def list_services(self, db: Session, prestataire_id: int | None = None) -> list[ServiceRead]:
-        stmt = select(Service).order_by(Service.id)
+        stmt = select(Service).order_by(Service.created_at.desc(), Service.id.desc())
         if prestataire_id is not None:
             stmt = stmt.where(Service.prestataire_id == prestataire_id)
         services = db.scalars(stmt).all()

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import Field
 
 from app.schemas.common import AppBaseModel
@@ -17,3 +19,5 @@ class ServiceRead(AppBaseModel):
     description: str
     price: float
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
