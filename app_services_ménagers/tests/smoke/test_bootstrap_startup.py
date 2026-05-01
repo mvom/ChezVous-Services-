@@ -6,7 +6,6 @@ import pytest
 
 
 COMPOSE_CMD = ["docker", "compose", "--profile", "async"]
-EXPECTED_ALEMBIC_REVISION = "20260429_0001"
 
 
 def run_compose(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -95,8 +94,17 @@ def test_bootstrap_migration_ready_and_worker_redis_connection():
     assert revision_count.isdigit(), revision_count
     assert int(revision_count) >= 1
 
+    expected_revision = run_compose(
+        "exec",
+        "-T",
+        "api",
+        "python",
+        "-m",
+        "alembic",
+        "heads",
+    ).stdout.strip().split()[0]
     revision = query_db("SELECT version_num FROM alembic_version LIMIT 1;")
-    assert revision == EXPECTED_ALEMBIC_REVISION
+    assert revision == expected_revision
 
     worker_logs = wait_worker_connected()
     assert "Connected to redis://" in worker_logs

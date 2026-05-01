@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 
 type Role = "client" | "prestataire" | "admin";
@@ -13,6 +13,24 @@ type JwtClaims = {
 type UserProfile = {
   username: string;
   avatar_url: string | null;
+};
+
+type UserRecord = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  username: string;
+  email: string;
+  address: string;
+  phone: string;
+  role: Role;
+  avatar_url?: string | null;
+};
+
+type PrestataireRecord = {
+  user_id: number;
+  rating: number;
+  verified: boolean;
 };
 
 type LoginResponse = {
@@ -30,6 +48,8 @@ type Demande = {
   ville?: string | null;
   arrondissement?: string | null;
   quartier?: string | null;
+  client_availability_mode?: string;
+  client_availability_note?: string | null;
   created_at: string;
   updated_at: string;
   events: DemandeEvent[];
@@ -50,9 +70,26 @@ type Service = {
   prestataire_id: number;
   name: string;
   description: string;
+  availability_slots: string;
   price: number;
   created_at: string;
   updated_at: string;
+};
+
+type PrestataireTrust = {
+  verified: boolean;
+  rating: number;
+  completed_missions: number;
+  total_missions: number;
+  average_response_minutes?: number | null;
+  eta_reliability_percent: number;
+};
+
+type PrestataireMissionSummary = {
+  user_id: number;
+  display_name: string;
+  avatar_url?: string | null;
+  trust: PrestataireTrust;
 };
 
 type Mission = {
@@ -65,6 +102,7 @@ type Mission = {
   scheduled_at?: string | null;
   created_at: string;
   updated_at: string;
+  prestataire_summary?: PrestataireMissionSummary | null;
 };
 
 type ToastState = {
@@ -76,6 +114,19 @@ type AuthMode = "login" | "register";
 
 type ClientStatusFilter = "all" | "ouverte" | "attribuee" | "annulee" | "expiree";
 type PrestataireStatusFilter = "all" | "ouverte" | "attribuee";
+type AvatarCropTarget = "profile" | "register";
+type PipelineCardFilter = "all" | "urgent" | "scheduled";
+type AvailabilityMode = "flexible" | "fixe";
+
+type EditDemandeDraft = {
+  description: string;
+  ville: string;
+  arrondissement: string;
+  quartier: string;
+  client_availability_mode: AvailabilityMode;
+  client_availability_note: string;
+  priority: string;
+};
 
 function cleanGeo(value?: string | null): string {
   return (value || "").trim();
@@ -89,8 +140,105 @@ function demandeGeoLabel(demande: Demande): string {
   return (demande.location || "Localisation indisponible").trim();
 }
 
+function clientAvailabilityLabel(demande: Demande): string {
+  const mode = (demande.client_availability_mode || "flexible").toLowerCase();
+  if (mode === "flexible") {
+    return "Disponibilite client: Flexible";
+  }
+  const note = (demande.client_availability_note || "").trim();
+  return note ? `Disponibilite client: ${note}` : "Disponibilite client: Planning fixe";
+}
+
+const AVATAR_CROP_VIEW_SIZE = 320;
+const AVATAR_EXPORT_SIZE = 1024;
+
+async function readFileAsDataUrl(file: File): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Impossible de lire l'image"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function loadImageSize(dataUrl: string): Promise<{ width: number; height: number }> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const nextImage = new Image();
+    nextImage.onload = () => resolve(nextImage);
+    nextImage.onerror = () => reject(new Error("Image invalide"));
+    nextImage.src = dataUrl;
+  });
+  return { width: img.width, height: img.height };
+}
+
+function avatarDisplaySize(width: number, height: number, zoom: number): { width: number; height: number } {
+  const baseScale = Math.max(AVATAR_CROP_VIEW_SIZE / width, AVATAR_CROP_VIEW_SIZE / height);
+  return {
+    width: width * baseScale * zoom,
+    height: height * baseScale * zoom,
+  };
+}
+
+function clampAvatarOffset(width: number, height: number, zoom: number, x: number, y: number): { x: number; y: number } {
+  const display = avatarDisplaySize(width, height, zoom);
+  const maxX = Math.max(0, (display.width - AVATAR_CROP_VIEW_SIZE) / 2);
+  const maxY = Math.max(0, (display.height - AVATAR_CROP_VIEW_SIZE) / 2);
+  return {
+    x: Math.min(maxX, Math.max(-maxX, x)),
+    y: Math.min(maxY, Math.max(-maxY, y)),
+  };
+}
+
+async function exportAvatarCrop(
+  sourceDataUrl: string,
+  width: number,
+  height: number,
+  zoom: number,
+  offsetX: number,
+  offsetY: number,
+): Promise<string> {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Image invalide"));
+    img.src = sourceDataUrl;
+  });
+
+  const display = avatarDisplaySize(width, height, zoom);
+  const imageLeft = (AVATAR_CROP_VIEW_SIZE - display.width) / 2 + offsetX;
+  const imageTop = (AVATAR_CROP_VIEW_SIZE - display.height) / 2 + offsetY;
+  const ratioX = width / display.width;
+  const ratioY = height / display.height;
+
+  const sourceX = Math.max(0, (0 - imageLeft) * ratioX);
+  const sourceY = Math.max(0, (0 - imageTop) * ratioY);
+  const sourceW = Math.min(width - sourceX, AVATAR_CROP_VIEW_SIZE * ratioX);
+  const sourceH = Math.min(height - sourceY, AVATAR_CROP_VIEW_SIZE * ratioY);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = AVATAR_EXPORT_SIZE;
+  canvas.height = AVATAR_EXPORT_SIZE;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Canvas non disponible");
+  }
+
+  ctx.drawImage(image, sourceX, sourceY, sourceW, sourceH, 0, 0, AVATAR_EXPORT_SIZE, AVATAR_EXPORT_SIZE);
+  const qualities = [0.92, 0.86, 0.8, 0.72, 0.65];
+  let best = canvas.toDataURL("image/jpeg", qualities[0]);
+  for (const quality of qualities) {
+    const candidate = canvas.toDataURL("image/jpeg", quality);
+    best = candidate;
+    if (candidate.length <= 3_000_000) {
+      break;
+    }
+  }
+  return best;
+}
+
 const API_BASE = "http://localhost:8000/api/v1";
 const TOKEN_KEY = "sm_token";
+const DEMANDE_DRAFT_KEY = "sm_last_demande_draft";
 const HIDDEN_ADMIN_PATH = "/_staff/console";
 
 function decodeJwt(jwtToken: string): JwtClaims | null {
@@ -267,6 +415,33 @@ function demandeEventText(event: DemandeEvent): string {
   return formatStatusLabel(event.event_type);
 }
 
+type DemandeStepBadge = {
+  key: "publiee" | "attribuee" | "en_cours" | "terminee" | "notee";
+  label: string;
+};
+
+function demandeEventStepBadge(event: DemandeEvent): DemandeStepBadge | null {
+  const step = (event.new_status || event.event_type || "").toLowerCase();
+
+  if (step === "cree" || step === "ouverte" || step === "publiee") {
+    return { key: "publiee", label: "Publiee" };
+  }
+  if (step === "attribuee" || step === "acceptee" || step === "confirmee") {
+    return { key: "attribuee", label: "Attribuee" };
+  }
+  if (step === "en_cours") {
+    return { key: "en_cours", label: "En cours" };
+  }
+  if (step === "terminee") {
+    return { key: "terminee", label: "Terminee" };
+  }
+  if (step === "notee") {
+    return { key: "notee", label: "Notee" };
+  }
+
+  return null;
+}
+
 function demandeEventActor(event: DemandeEvent): string {
   if (event.actor_label) {
     return event.actor_label;
@@ -303,12 +478,97 @@ function groupEventsByDay(events: DemandeEvent[]): { day: string; events: Demand
   return Array.from(groups.entries()).map(([day, evs]) => ({ day, events: evs }));
 }
 
-function missionKanbanStatus(status: string): "pending" | "active" | "done" | "other" {
+function missionPipelineStatus(status: string): "pending" | "active" | "done" | "other" {
   if (status === "en_attente" || status === "acceptee" || status === "confirmee") return "pending";
   if (status === "en_cours") return "active";
   if (status === "terminee") return "done";
   return "other";
 }
+
+function demandeProgressIndex(status: string): number {
+  if (status === "ouverte") return 0;
+  if (status === "attribuee") return 1;
+  if (status === "en_cours") return 2;
+  if (status === "terminee") return 3;
+  return 0;
+}
+
+function demandeProgressSteps(status: string): Array<{ key: string; label: string; done: boolean; active: boolean }> {
+  const index = demandeProgressIndex(status);
+  const raw = [
+    { key: "ouverte", label: "Creee" },
+    { key: "attribuee", label: "Acceptee" },
+    { key: "en_cours", label: "En cours" },
+    { key: "terminee", label: "Terminee" },
+  ];
+
+  return raw.map((step, i) => ({
+    ...step,
+    done: i < index,
+    active: i === index,
+  }));
+}
+
+function formatResponseDelay(value?: number | null): string {
+  if (value == null) {
+    return "Reponse: indisponible";
+  }
+  if (value < 60) {
+    return `Reponse moyenne: ${value} min`;
+  }
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  if (minutes === 0) {
+    return `Reponse moyenne: ${hours} h`;
+  }
+  return `Reponse moyenne: ${hours} h ${minutes} min`;
+}
+
+function etaReliabilityLabel(value: number): string {
+  if (value >= 85) return `ETA fiable: ${value}%`;
+  if (value >= 60) return `ETA assez fiable: ${value}%`;
+  return `ETA a confirmer: ${value}%`;
+}
+
+function trustBadgeTone(value: number): string {
+  if (value >= 85) return "trust-badge trust-badge--strong";
+  if (value >= 60) return "trust-badge trust-badge--medium";
+  return "trust-badge trust-badge--soft";
+}
+
+function renderPrestataireTrust(summary?: PrestataireMissionSummary | null): JSX.Element | null {
+  if (!summary) {
+    return null;
+  }
+
+  const trust = summary.trust;
+  return (
+    <div className="provider-trust-card">
+      <div className="provider-trust-head">
+        <strong>{summary.display_name}</strong>
+        <span className="provider-trust-rating">Note {trust.rating.toFixed(1)}/5</span>
+      </div>
+      <div className="provider-trust-badges">
+        {trust.verified ? <span className="trust-badge trust-badge--verified">Verifie</span> : null}
+        <span className="trust-badge">{trust.completed_missions} missions terminees</span>
+        <span className="trust-badge">{formatResponseDelay(trust.average_response_minutes)}</span>
+        <span className={trustBadgeTone(trust.eta_reliability_percent)}>{etaReliabilityLabel(trust.eta_reliability_percent)}</span>
+      </div>
+    </div>
+  );
+}
+
+function renderSkeletonList(prefix: string, count = 3): JSX.Element[] {
+  return Array.from({ length: count }).map((_, index) => (
+    <li key={`${prefix}-${index}`} className="skeleton-item">
+      <div className="skeleton-line skeleton-line--lg" />
+      <div className="skeleton-line" />
+      <div className="skeleton-line skeleton-line--sm" />
+    </li>
+  ));
+}
+
+const MODAL_CLOSE_MS = 180;
 
 function AppShell(): JSX.Element {
   const navigate = useNavigate();
@@ -321,12 +581,30 @@ function AppShell(): JSX.Element {
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [missions, setMissions] = useState<Mission[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [prestataires, setPrestataires] = useState<PrestataireRecord[]>([]);
   const [clientStatusFilter, setClientStatusFilter] = useState<ClientStatusFilter>("all");
   const [clientQuery, setClientQuery] = useState("");
   const [prestataireStatusFilter, setPrestataireStatusFilter] = useState<PrestataireStatusFilter>("ouverte");
   const [prestataireVilleFilter, setPrestataireVilleFilter] = useState("all");
   const [prestataireArrondissementFilter, setPrestataireArrondissementFilter] = useState("all");
   const [prestataireQuartierFilter, setPrestataireQuartierFilter] = useState("all");
+  const [pipelineVisibleCount, setPipelineVisibleCount] = useState<5 | 10>(5);
+  const [pipelineCardFilter, setPipelineCardFilter] = useState<PipelineCardFilter>("all");
+  const [pipelineIdQuery, setPipelineIdQuery] = useState("");
+  const [missionPendingId, setMissionPendingId] = useState<number | null>(null);
+  const [demandeCancelId, setDemandeCancelId] = useState<number | null>(null);
+  const [unregisterModalOpen, setUnregisterModalOpen] = useState(false);
+  const [unregisterPassword, setUnregisterPassword] = useState("");
+  const [unregisterPending, setUnregisterPending] = useState(false);
+  const [editDemandeTarget, setEditDemandeTarget] = useState<Demande | null>(null);
+  const [editDemandeDraft, setEditDemandeDraft] = useState<EditDemandeDraft | null>(null);
+  const [editDemandePending, setEditDemandePending] = useState(false);
+  const [demandDetailClosing, setDemandDetailClosing] = useState(false);
+  const [cropModalClosing, setCropModalClosing] = useState(false);
+  const [editModalClosing, setEditModalClosing] = useState(false);
+  const [cancelModalClosing, setCancelModalClosing] = useState(false);
+  const [unregisterModalClosing, setUnregisterModalClosing] = useState(false);
   const [authModeByRole, setAuthModeByRole] = useState<Record<Extract<Role, "client" | "prestataire">, AuthMode>>({
     client: "register",
     prestataire: "register",
@@ -334,9 +612,21 @@ function AppShell(): JSX.Element {
   const clientCreateFormRef = useRef<HTMLFormElement | null>(null);
   const prestataireCreateServiceRef = useRef<HTMLFormElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const registerAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAvatarRef = useRef<string | null>(null);
+  const cropDragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [avatarUploadPending, setAvatarUploadPending] = useState(false);
+  const [registerAvatarDataUrl, setRegisterAvatarDataUrl] = useState<string | null>(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropSourceDataUrl, setCropSourceDataUrl] = useState("");
+  const [cropImageSize, setCropImageSize] = useState<{ width: number; height: number } | null>(null);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropOffsetX, setCropOffsetX] = useState(0);
+  const [cropOffsetY, setCropOffsetY] = useState(0);
+  const [cropTarget, setCropTarget] = useState<AvatarCropTarget | null>(null);
+  const [cropPending, setCropPending] = useState(false);
+  const [selectedDemandForDetail, setSelectedDemandForDetail] = useState<Demande | null>(null);
 
   useEffect(() => {
     if (!toast) {
@@ -355,6 +645,8 @@ function AppShell(): JSX.Element {
       setDemandes([]);
       setServices([]);
       setMissions([]);
+      setUsers([]);
+      setPrestataires([]);
       setUserProfile(null);
       window.localStorage.removeItem(TOKEN_KEY);
       navigate("/", { replace: true });
@@ -391,14 +683,22 @@ function AppShell(): JSX.Element {
 
     try {
       setDashboardPending(true);
-      const [nextDemandes, nextServices, nextMissions] = await Promise.all([
+      const [nextDemandes, nextServices, nextMissions, nextUsers, nextPrestataires] = await Promise.all([
         apiFetch<Demande[]>("/demandes", { headers: authHeaders(nextToken) }),
         apiFetch<Service[]>("/services", { headers: authHeaders(nextToken) }),
         apiFetch<Mission[]>("/missions", { headers: authHeaders(nextToken) }),
+        nextClaims.role === "admin"
+          ? apiFetch<UserRecord[]>("/auth/users", { headers: authHeaders(nextToken) })
+          : Promise.resolve([] as UserRecord[]),
+        nextClaims.role === "admin"
+          ? apiFetch<PrestataireRecord[]>("/prestataires", { headers: authHeaders(nextToken) })
+          : Promise.resolve([] as PrestataireRecord[]),
       ]);
       setDemandes(nextDemandes);
       setServices(nextServices);
       setMissions(nextMissions);
+      setUsers(nextUsers);
+      setPrestataires(nextPrestataires);
       navigate(roleHomePath(nextClaims.role), { replace: true });
       void fetchUserProfile(nextToken);
     } catch (error) {
@@ -491,16 +791,11 @@ function AppShell(): JSX.Element {
         }),
       });
 
-      // Capture pending avatar if provided
-      const avatarFile = (form.elements.namedItem("avatar") as HTMLInputElement | null)?.files?.[0];
-      if (avatarFile) {
-        await new Promise<void>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => { pendingAvatarRef.current = reader.result as string; resolve(); };
-          reader.readAsDataURL(avatarFile);
-        });
-      }
       form.reset();
+      if (registerAvatarDataUrl) {
+        pendingAvatarRef.current = registerAvatarDataUrl;
+      }
+      setRegisterAvatarDataUrl(null);
       setToken(loginResult.access_token);
       setToast({ kind: "ok", message: "Inscription reussie. Redirection vers votre tableau de bord..." });
     } catch (error) {
@@ -528,20 +823,42 @@ function AppShell(): JSX.Element {
     const ville = String(formData.get("ville") || "").trim();
     const arrondissement = String(formData.get("arrondissement") || "").trim();
     const quartier = String(formData.get("quartier") || "").trim();
+    const clientAvailabilityMode = String(formData.get("client_availability_mode") || "flexible");
+    const clientAvailabilityNote = String(formData.get("client_availability_note") || "").trim();
+
+    if (clientAvailabilityMode === "fixe" && clientAvailabilityNote.length < 5) {
+      setToast({ kind: "err", message: "Precisez votre disponibilite (minimum 5 caracteres)" });
+      return;
+    }
+
     try {
+      const payload = {
+        client_id: currentUserId(),
+        description: String(formData.get("description") || ""),
+        location: [ville, arrondissement, quartier].filter(Boolean).join(", "),
+        ville,
+        arrondissement,
+        quartier,
+        client_availability_mode: clientAvailabilityMode,
+        client_availability_note: clientAvailabilityNote || null,
+        priority: String(formData.get("priority") || "normale"),
+      };
       await apiFetch<void>("/demandes", {
         method: "POST",
         headers: authHeaders(token),
-        body: JSON.stringify({
-          client_id: currentUserId(),
-          description: String(formData.get("description") || ""),
-          location: [ville, arrondissement, quartier].filter(Boolean).join(", "),
+        body: JSON.stringify(payload),
+      });
+      window.localStorage.setItem(
+        DEMANDE_DRAFT_KEY,
+        JSON.stringify({
           ville,
           arrondissement,
           quartier,
-          priority: String(formData.get("priority") || "normale"),
-        }),
-      });
+          client_availability_mode: clientAvailabilityMode,
+          client_availability_note: clientAvailabilityNote,
+          priority: payload.priority,
+        })
+      );
       setToast({ kind: "ok", message: "Request created" });
       form.reset();
       if (claims) {
@@ -549,6 +866,146 @@ function AppShell(): JSX.Element {
       }
     } catch (error) {
       setToast({ kind: "err", message: error instanceof Error ? error.message : "Request creation failed" });
+    }
+  }
+
+  function handleEditDemande(demande: Demande) {
+    if (demande.status !== "ouverte") {
+      setToast({ kind: "err", message: "La demande ne peut plus etre modifiee apres acceptation." });
+      return;
+    }
+    setEditModalClosing(false);
+    setEditDemandeTarget(demande);
+    setEditDemandeDraft({
+      description: demande.description,
+      ville: cleanGeo(demande.ville),
+      arrondissement: cleanGeo(demande.arrondissement),
+      quartier: cleanGeo(demande.quartier),
+      client_availability_mode: ((demande.client_availability_mode || "flexible").toLowerCase() === "fixe" ? "fixe" : "flexible"),
+      client_availability_note: demande.client_availability_note || "",
+      priority: demande.priority || "normale",
+    });
+  }
+
+  function closeEditDemandeModal() {
+    if (editDemandePending) {
+      return;
+    }
+    setEditModalClosing(true);
+    window.setTimeout(() => {
+      setEditDemandeTarget(null);
+      setEditDemandeDraft(null);
+      setEditModalClosing(false);
+    }, MODAL_CLOSE_MS);
+  }
+
+  async function handleConfirmEditDemande(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !editDemandeTarget || !editDemandeDraft) {
+      return;
+    }
+
+    const description = editDemandeDraft.description.trim();
+    const ville = editDemandeDraft.ville.trim();
+    const arrondissement = editDemandeDraft.arrondissement.trim();
+    const quartier = editDemandeDraft.quartier.trim();
+    const availabilityMode = editDemandeDraft.client_availability_mode;
+    const availabilityNote = editDemandeDraft.client_availability_note.trim();
+
+    if (description.length < 5 || ville.length < 2 || arrondissement.length < 2 || quartier.length < 2) {
+      setToast({ kind: "err", message: "Completez correctement les champs de la demande." });
+      return;
+    }
+
+    if (availabilityMode === "fixe" && availabilityNote.length < 5) {
+      setToast({ kind: "err", message: "Merci de preciser une disponibilite fixe." });
+      return;
+    }
+
+    try {
+      setEditDemandePending(true);
+      await apiFetch<Demande>(`/demandes/${editDemandeTarget.id}`, {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          description,
+          ville,
+          arrondissement,
+          quartier,
+          location: [ville, arrondissement, quartier].join(", "),
+          client_availability_mode: availabilityMode,
+          client_availability_note: availabilityNote || null,
+          priority: editDemandeDraft.priority || "normale",
+        }),
+      });
+      setToast({ kind: "ok", message: "Demande mise a jour." });
+      closeEditDemandeModal();
+      if (claims) {
+        await refreshDashboard(claims, token);
+      }
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Mise a jour impossible" });
+    } finally {
+      setEditDemandePending(false);
+    }
+  }
+
+  async function handleDuplicateDemande(source: Demande) {
+    if (!token) return;
+    try {
+      await apiFetch<void>("/demandes", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          client_id: currentUserId(),
+          description: source.description,
+          location: [cleanGeo(source.ville), cleanGeo(source.arrondissement), cleanGeo(source.quartier)].filter(Boolean).join(", "),
+          ville: cleanGeo(source.ville),
+          arrondissement: cleanGeo(source.arrondissement),
+          quartier: cleanGeo(source.quartier),
+          client_availability_mode: source.client_availability_mode || "flexible",
+          client_availability_note: source.client_availability_note || null,
+          priority: source.priority || "normale",
+        }),
+      });
+      setToast({ kind: "ok", message: "Demande dupliquee." });
+      if (claims) {
+        await refreshDashboard(claims, token);
+      }
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Duplication impossible" });
+    }
+  }
+
+  function handleCancelDemande(demandeId: number) {
+    setCancelModalClosing(false);
+    setDemandeCancelId(demandeId);
+  }
+
+  function closeCancelDemandeModal() {
+    setCancelModalClosing(true);
+    window.setTimeout(() => {
+      setDemandeCancelId(null);
+      setCancelModalClosing(false);
+    }, MODAL_CLOSE_MS);
+  }
+
+  async function confirmCancelDemande() {
+    if (!token || demandeCancelId == null) {
+      return;
+    }
+    try {
+      await apiFetch<Demande>(`/demandes/${demandeCancelId}/cancel`, {
+        method: "POST",
+        headers: authHeaders(token),
+      });
+      setToast({ kind: "ok", message: "Demande annulee." });
+      closeCancelDemandeModal();
+      if (claims) {
+        await refreshDashboard(claims, token);
+      }
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Annulation impossible" });
     }
   }
 
@@ -568,6 +1025,7 @@ function AppShell(): JSX.Element {
           prestataire_id: currentUserId(),
           name: String(formData.get("name") || ""),
           description: String(formData.get("description") || ""),
+          availability_slots: String(formData.get("availability_slots") || "").trim(),
           price: Number(formData.get("price") || 0),
         }),
       });
@@ -593,6 +1051,7 @@ function AppShell(): JSX.Element {
       return;
     }
     try {
+      setMissionPendingId(missionId);
       await apiFetch<Mission>(`/missions/${missionId}/status`, {
         method: "PATCH",
         headers: authHeaders(token),
@@ -604,60 +1063,235 @@ function AppShell(): JSX.Element {
       }
     } catch (error) {
       setToast({ kind: "err", message: error instanceof Error ? error.message : "Mise à jour impossible" });
+    } finally {
+      setMissionPendingId(null);
     }
   }
 
-  async function handleUnregister() {
+  async function handleTogglePrestataireVerified(prestataireId: number, nextVerified: boolean) {
     if (!token) {
       return;
     }
-    const password = window.prompt("Entrez votre mot de passe pour confirmer la desinscription :");
-    if (!password) {
+    try {
+      await apiFetch<PrestataireRecord>(`/prestataires/${prestataireId}/verified`, {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({ verified: nextVerified }),
+      });
+      setToast({ kind: "ok", message: nextVerified ? "Prestataire verifie." : "Verification retiree." });
+      if (claims) {
+        await refreshDashboard(claims, token);
+      }
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Mise a jour impossible" });
+    }
+  }
+
+  function handleUnregister() {
+    setUnregisterModalClosing(false);
+    setUnregisterPassword("");
+    setUnregisterModalOpen(true);
+  }
+
+  function closeUnregisterModal() {
+    if (unregisterPending) {
+      return;
+    }
+    setUnregisterModalClosing(true);
+    window.setTimeout(() => {
+      setUnregisterModalOpen(false);
+      setUnregisterPassword("");
+      setUnregisterModalClosing(false);
+    }, MODAL_CLOSE_MS);
+  }
+
+  async function confirmUnregister() {
+    if (!token || unregisterPassword.trim().length === 0) {
+      setToast({ kind: "err", message: "Entrez votre mot de passe pour confirmer." });
       return;
     }
 
     try {
+      setUnregisterPending(true);
       await apiFetch<{ detail: string }>("/auth/unregister", {
         method: "POST",
         headers: authHeaders(token),
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password: unregisterPassword }),
       });
       logout();
       setToast({ kind: "ok", message: "Compte supprime. Verification dans MailHog." });
+      closeUnregisterModal();
       navigate("/", { replace: true });
     } catch (error) {
       setToast({ kind: "err", message: error instanceof Error ? error.message : "Desinscription impossible" });
+    } finally {
+      setUnregisterPending(false);
     }
   }
 
-  async function handleAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file || !token) return;
-    if (file.size > 450_000) {
-      setToast({ kind: "err", message: "Image trop grande. Maximum 450 Ko." });
+    if (file.size > 8_000_000) {
+      setToast({ kind: "err", message: "Image source trop grande. Maximum 8 Mo." });
+      event.target.value = "";
       return;
     }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result as string;
-      try {
+    try {
+      const sourceDataUrl = await readFileAsDataUrl(file);
+      const size = await loadImageSize(sourceDataUrl);
+      setCropSourceDataUrl(sourceDataUrl);
+      setCropImageSize(size);
+      setCropZoom(1);
+      setCropOffsetX(0);
+      setCropOffsetY(0);
+      setCropTarget("profile");
+      setCropModalClosing(false);
+      setCropModalOpen(true);
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Erreur lors du televersement." });
+    }
+    // Reset input so same file can be re-selected
+    event.target.value = "";
+  }
+
+  async function handleRegisterAvatarSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8_000_000) {
+      setToast({ kind: "err", message: "Image source trop grande. Maximum 8 Mo." });
+      event.target.value = "";
+      return;
+    }
+    try {
+      const sourceDataUrl = await readFileAsDataUrl(file);
+      const size = await loadImageSize(sourceDataUrl);
+      setCropSourceDataUrl(sourceDataUrl);
+      setCropImageSize(size);
+      setCropZoom(1);
+      setCropOffsetX(0);
+      setCropOffsetY(0);
+      setCropTarget("register");
+      setCropModalClosing(false);
+      setCropModalOpen(true);
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Erreur lors de l'import de l'image." });
+    }
+    event.target.value = "";
+  }
+
+  function closeCropModal() {
+    if (cropPending) {
+      return;
+    }
+    setCropModalClosing(true);
+    window.setTimeout(() => {
+      setCropModalOpen(false);
+      setCropSourceDataUrl("");
+      setCropImageSize(null);
+      setCropZoom(1);
+      setCropOffsetX(0);
+      setCropOffsetY(0);
+      setCropTarget(null);
+      cropDragRef.current = null;
+      setCropModalClosing(false);
+    }, MODAL_CLOSE_MS);
+  }
+
+  function openDemandDetailModal(demande: Demande) {
+    setDemandDetailClosing(false);
+    setSelectedDemandForDetail(demande);
+  }
+
+  function closeDemandDetailModal() {
+    setDemandDetailClosing(true);
+    window.setTimeout(() => {
+      setSelectedDemandForDetail(null);
+      setDemandDetailClosing(false);
+    }, MODAL_CLOSE_MS);
+  }
+
+  function handleCropZoomChange(nextZoom: number) {
+    if (!cropImageSize) {
+      return;
+    }
+    const clamped = clampAvatarOffset(cropImageSize.width, cropImageSize.height, nextZoom, cropOffsetX, cropOffsetY);
+    setCropZoom(nextZoom);
+    setCropOffsetX(clamped.x);
+    setCropOffsetY(clamped.y);
+  }
+
+  function onCropPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!cropImageSize) {
+      return;
+    }
+    cropDragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: cropOffsetX,
+      originY: cropOffsetY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onCropPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!cropImageSize || !cropDragRef.current) {
+      return;
+    }
+    const nextX = cropDragRef.current.originX + (event.clientX - cropDragRef.current.startX);
+    const nextY = cropDragRef.current.originY + (event.clientY - cropDragRef.current.startY);
+    const clamped = clampAvatarOffset(cropImageSize.width, cropImageSize.height, cropZoom, nextX, nextY);
+    setCropOffsetX(clamped.x);
+    setCropOffsetY(clamped.y);
+  }
+
+  function onCropPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    cropDragRef.current = null;
+  }
+
+  async function confirmCropSelection() {
+    if (!cropImageSize || !cropSourceDataUrl || !cropTarget) {
+      return;
+    }
+
+    try {
+      setCropPending(true);
+      const avatarDataUrl = await exportAvatarCrop(
+        cropSourceDataUrl,
+        cropImageSize.width,
+        cropImageSize.height,
+        cropZoom,
+        cropOffsetX,
+        cropOffsetY
+      );
+
+      if (cropTarget === "register") {
+        setRegisterAvatarDataUrl(avatarDataUrl);
+        setToast({ kind: "ok", message: "Photo cadree pour l'inscription." });
+      } else {
+        if (!token) {
+          throw new Error("Session invalide");
+        }
         setAvatarUploadPending(true);
         await apiFetch<UserProfile>("/auth/me/avatar", {
           method: "PATCH",
           headers: authHeaders(token),
-          body: JSON.stringify({ avatar_url: base64 }),
+          body: JSON.stringify({ avatar_url: avatarDataUrl }),
         });
-        setUserProfile((prev) => prev ? { ...prev, avatar_url: base64 } : prev);
-        setToast({ kind: "ok", message: "Photo de profil mise à jour !" });
-      } catch (error) {
-        setToast({ kind: "err", message: error instanceof Error ? error.message : "Erreur lors du téléversement." });
-      } finally {
-        setAvatarUploadPending(false);
+        setUserProfile((prev) => prev ? { ...prev, avatar_url: avatarDataUrl } : prev);
+        setToast({ kind: "ok", message: "Photo de profil mise a jour (cadree)." });
       }
-    };
-    reader.readAsDataURL(file);
-    // Reset input so same file can be re-selected
-    event.target.value = "";
+
+      closeCropModal();
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Recadrage impossible." });
+    } finally {
+      setCropPending(false);
+      setAvatarUploadPending(false);
+    }
   }
 
   function logout() {
@@ -791,8 +1425,14 @@ function AppShell(): JSX.Element {
               <input type="password" name="password_confirmation" minLength={8} required />
             </label>
             <label>
-              <span>Photo de profil <em style={{ fontWeight: 400, opacity: 0.7 }}>(optionnelle)</em></span>
-              <input type="file" name="avatar" accept="image/*" />
+              <span>Photo de profil <em style={{ fontWeight: 400, opacity: 0.7 }}>(optionnelle, max 8 Mo, cadrage auto)</em></span>
+              <input
+                ref={registerAvatarInputRef}
+                type="file"
+                name="avatar"
+                accept="image/*"
+                onChange={(event) => void handleRegisterAvatarSelected(event)}
+              />
             </label>
             <button type="submit" disabled={registerPending}>
               {registerPending ? "Creation..." : "S'inscrire"}
@@ -819,6 +1459,36 @@ function AppShell(): JSX.Element {
 
     const pendingDemandes = clientDemandes.filter((demande) => demande.status === "ouverte").length;
     const activeMissions = clientMissions.filter((mission) => mission.status === "en_cours").length;
+    const highPriorityOpen = clientDemandes.filter((demande) => demande.status === "ouverte" && demande.priority === "haute").length;
+    const completedMissions = clientMissions.filter((mission) => mission.status === "terminee").length;
+    const completionRate = clientMissions.length > 0 ? Math.round((completedMissions / clientMissions.length) * 100) : 0;
+    const nextScheduledMission = [...clientMissions]
+      .filter((mission) => mission.scheduled_at)
+      .sort((a, b) => new Date(a.scheduled_at as string).getTime() - new Date(b.scheduled_at as string).getTime())[0];
+
+    const lastDraftRaw = window.localStorage.getItem(DEMANDE_DRAFT_KEY);
+    let lastDraft: {
+      ville?: string;
+      arrondissement?: string;
+      quartier?: string;
+      client_availability_mode?: string;
+      client_availability_note?: string;
+      priority?: string;
+    } | null = null;
+    if (lastDraftRaw) {
+      try {
+        lastDraft = JSON.parse(lastDraftRaw) as {
+          ville?: string;
+          arrondissement?: string;
+          quartier?: string;
+          client_availability_mode?: string;
+          client_availability_note?: string;
+          priority?: string;
+        };
+      } catch {
+        window.localStorage.removeItem(DEMANDE_DRAFT_KEY);
+      }
+    }
 
     const nextAction =
       pendingDemandes > 0
@@ -885,6 +1555,29 @@ function AppShell(): JSX.Element {
           </div>
         </div>
 
+        <section className="card role-hero role-hero--client">
+          <div>
+            <h3>Votre cockpit client</h3>
+            <p>
+              {dashboardPending
+                ? "Synchronisation en cours de vos demandes et missions..."
+                : `${pendingDemandes} demande(s) ouverte(s), ${activeMissions} mission(s) active(s).`}
+            </p>
+          </div>
+          <div className="role-hero__actions">
+            <button
+              type="button"
+              onClick={() => clientCreateFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+              disabled={dashboardPending}
+            >
+              {dashboardPending ? "Patientez..." : "Nouvelle demande"}
+            </button>
+            <button type="button" className="ghost" onClick={() => setClientStatusFilter("ouverte")} disabled={dashboardPending}>
+              Mes demandes ouvertes
+            </button>
+          </div>
+        </section>
+
         <section className="card recommendation-card">
           <div>
             <h3>Prochaine action recommandee</h3>
@@ -893,7 +1586,7 @@ function AppShell(): JSX.Element {
           <button type="button" onClick={nextAction.onClick}>{nextAction.cta}</button>
         </section>
 
-        <div className="quick-actions">
+        <div className="quick-actions quick-actions-sticky">
           <button type="button" className="ghost" onClick={() => setClientStatusFilter("ouverte")}>Demandes ouvertes</button>
           <button
             type="button"
@@ -902,21 +1595,45 @@ function AppShell(): JSX.Element {
           >
             Nouvelle demande
           </button>
-          <button type="button" className="ghost" onClick={() => setClientStatusFilter("all")}>Tout afficher</button>
         </div>
 
+        <section className="card stack today-overview-card">
+          <div className="section-head">
+            <h3>Vue d'ensemble en 5 secondes</h3>
+            <span>{dashboardPending ? "Mise a jour..." : "A jour"}</span>
+          </div>
+          <div className="today-overview-grid">
+            <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : (nextScheduledMission ? formatDateTime(nextScheduledMission.scheduled_at || undefined) : "Aucun ETA")}</strong>
+              <span>Prochaine intervention</span>
+            </div>
+            <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : pendingDemandes}</strong>
+              <span>Demandes ouvertes</span>
+            </div>
+            <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : highPriorityOpen}</strong>
+              <span>Demandes urgentes</span>
+            </div>
+            <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : `${completionRate}%`}</strong>
+              <span>Taux de missions terminees</span>
+            </div>
+          </div>
+        </section>
+
         <div className="stats-grid">
-          <article className="metric-card">
+          <article className={`metric-card ${dashboardPending ? "skeleton-card" : ""}`}>
             <span>My requests</span>
-            <strong>{clientDemandes.length}</strong>
+            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : clientDemandes.length}</strong>
           </article>
-          <article className="metric-card">
+          <article className={`metric-card ${dashboardPending ? "skeleton-card" : ""}`}>
             <span>Available services</span>
-            <strong>{services.length}</strong>
+            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : services.length}</strong>
           </article>
-          <article className="metric-card wide">
+          <article className={`metric-card wide ${dashboardPending ? "skeleton-card" : ""}`}>
             <span>Services history</span>
-            <strong>{clientMissions.length}</strong>
+            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : clientMissions.length}</strong>
           </article>
         </div>
 
@@ -942,8 +1659,9 @@ function AppShell(): JSX.Element {
               />
             </div>
             <ul className="list clean-list">
-              {filteredDemandes.length === 0 ? <li>Aucune demande ne correspond au filtre.</li> : null}
-              {filteredDemandes.map((demande) => {
+              {dashboardPending ? renderSkeletonList("client-demandes") : null}
+              {!dashboardPending && filteredDemandes.length === 0 ? <li>Aucune demande ne correspond au filtre.</li> : null}
+              {!dashboardPending && filteredDemandes.map((demande) => {
                 const linkedMission = clientMissions.find((m) => m.demande_id === demande.id);
                 const rawEvents =
                   demande.events && demande.events.length > 0
@@ -958,34 +1676,71 @@ function AppShell(): JSX.Element {
                       <span className={priorityClass(demande.priority)}>{priorityLabel(demande.priority)}</span>
                       <span className={statusChipClass(demande.status)}>{demandeStatusLabel(demande.status)}</span>
                     </div>
+                    <div className="demande-actions-row">
+                      {demande.status === "ouverte" ? (
+                        <button type="button" className="ghost inline-ghost" onClick={() => handleEditDemande(demande)} disabled={dashboardPending}>
+                          Modifier
+                        </button>
+                      ) : null}
+                      {demande.status === "ouverte" ? (
+                        <button type="button" className="ghost inline-ghost" onClick={() => handleCancelDemande(demande.id)} disabled={dashboardPending}>
+                          Annuler
+                        </button>
+                      ) : null}
+                      <button type="button" className="ghost inline-ghost" onClick={() => void handleDuplicateDemande(demande)} disabled={dashboardPending}>
+                        Dupliquer
+                      </button>
+                    </div>
+                    {demande.status !== "annulee" ? (
+                      <div className="progress-inline" aria-label="Progression de la demande">
+                        {demandeProgressSteps(demande.status).map((step) => (
+                          <span
+                            key={step.key}
+                            className={`progress-pill ${step.done ? "done" : ""} ${step.active ? "active" : ""}`.trim()}
+                          >
+                            {step.label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="timeline-line">Demande arretee par annulation.</div>
+                    )}
                     {linkedMission?.scheduled_at ? (
                       <div className="eta-line">
                         <span className="eta-icon">📅</span>
                         <span>Intervention prevue le {formatDateTime(linkedMission.scheduled_at)}</span>
                       </div>
                     ) : null}
+                    {renderPrestataireTrust(linkedMission?.prestataire_summary)}
                     <div className="event-timeline-grouped">
                       {eventGroups.map((group) => (
                         <div key={group.day} className="timeline-day-group">
                           <div className="timeline-day-label">{group.day}</div>
                           <ul className="event-timeline">
-                            {group.events.map((ev) => (
-                              <li key={ev.id} className={`timeline-item timeline-item--${ev.event_type}`}>
-                                <span className="timeline-item__bullet" />
-                                <div>
-                                  <div className="timeline-line">
-                                    <strong>{demandeEventText(ev)}</strong>
-                                    {demandeEventActor(ev) !== "Systeme" ? ` — ${demandeEventActor(ev)}` : ""}
+                            {group.events.map((ev) => {
+                              const stepBadge = demandeEventStepBadge(ev);
+                              return (
+                                <li key={ev.id} className={`timeline-item timeline-item--${ev.event_type}`}>
+                                  <span className="timeline-item__bullet" />
+                                  <div>
+                                    <div className="timeline-line timeline-line--event">
+                                      <strong>{demandeEventText(ev)}</strong>
+                                      {stepBadge ? (
+                                        <span className={`step-badge step-badge--${stepBadge.key}`}>{stepBadge.label}</span>
+                                      ) : null}
+                                      {demandeEventActor(ev) !== "Systeme" ? ` — ${demandeEventActor(ev)}` : ""}
+                                    </div>
+                                    <div className="timeline-line">{formatDateTime(ev.created_at)}</div>
                                   </div>
-                                  <div className="timeline-line">{formatDateTime(ev.created_at)}</div>
-                                </div>
-                              </li>
-                            ))}
+                                </li>
+                              );
+                            })}
                           </ul>
                         </div>
                       ))}
                     </div>
                     <div className="demande-meta">{demandeGeoLabel(demande)} — {demande.description}</div>
+                    <div className="timeline-line">{clientAvailabilityLabel(demande)}</div>
                   </li>
                 );
               })}
@@ -998,8 +1753,9 @@ function AppShell(): JSX.Element {
               <span>{dashboardPending ? "Loading..." : "Synced"}</span>
             </div>
             <ul className="list clean-list">
-              {clientMissions.length === 0 ? <li>Aucun service rendu pour le moment.</li> : null}
-              {clientMissions.map((mission) => (
+              {dashboardPending ? renderSkeletonList("client-history") : null}
+              {!dashboardPending && clientMissions.length === 0 ? <li>Aucun service rendu pour le moment.</li> : null}
+              {!dashboardPending && clientMissions.map((mission) => (
                 <li key={mission.id}>
                   <div className="status-line blue">
                     <span className="status-dot" />
@@ -1012,7 +1768,8 @@ function AppShell(): JSX.Element {
                       <span>Prevue le {formatDateTime(mission.scheduled_at)}</span>
                     </div>
                   ) : null}
-                  <div className="timeline-line">Demande #{mission.demande_id} — Prestataire #{mission.prestataire_id}</div>
+                  {renderPrestataireTrust(mission.prestataire_summary)}
+                  <div className="timeline-line">Demande #{mission.demande_id} — Prestataire #{mission.prestataire_summary?.display_name || `#${mission.prestataire_id}`}</div>
                   <div className="timeline-line">Creation: {formatDateTime(mission.created_at)}</div>
                   <div className="timeline-line">Mise a jour: {formatDateTime(mission.updated_at)}</div>
                 </li>
@@ -1023,32 +1780,61 @@ function AppShell(): JSX.Element {
 
         <div className="two-col">
           <form className="card stack" onSubmit={handleCreateDemande} ref={clientCreateFormRef}>
-            <h3>Create request</h3>
+            <div className="section-head">
+              <h3>Create request</h3>
+              {lastDraft ? (
+                <span>Dernieres preferences memorisees</span>
+              ) : (
+                <span>Creation rapide</span>
+              )}
+            </div>
             <label>
               <span>Description</span>
               <textarea name="description" required />
             </label>
             <label>
               <span>Ville</span>
-              <input type="text" name="ville" placeholder="Ex: Douala" required />
+              <input type="text" name="ville" placeholder="Ex: Douala" defaultValue={lastDraft?.ville || ""} required />
             </label>
             <label>
               <span>Arrondissement</span>
-              <input type="text" name="arrondissement" placeholder="Ex: Douala 5" required />
+              <input
+                type="text"
+                name="arrondissement"
+                placeholder="Ex: Douala 5"
+                defaultValue={lastDraft?.arrondissement || ""}
+                required
+              />
             </label>
             <label>
               <span>Quartier</span>
-              <input type="text" name="quartier" placeholder="Ex: Makepe" required />
+              <input type="text" name="quartier" placeholder="Ex: Makepe" defaultValue={lastDraft?.quartier || ""} required />
+            </label>
+            <label>
+              <span>Disponibilite client</span>
+              <select className="styled-select" name="client_availability_mode" defaultValue={lastDraft?.client_availability_mode || "flexible"}>
+                <option value="flexible">Flexible</option>
+                <option value="fixe">Planning fixe</option>
+              </select>
+            </label>
+            <label>
+              <span>Details disponibilite (ex: Lun-Ven 18h-20h)</span>
+              <input
+                type="text"
+                name="client_availability_note"
+                placeholder="Optionnel si flexible"
+                defaultValue={lastDraft?.client_availability_note || ""}
+              />
             </label>
             <label>
               <span>Priorité</span>
-              <select className="styled-select" name="priority" defaultValue="normale">
+              <select className="styled-select" name="priority" defaultValue={lastDraft?.priority || "normale"}>
                 <option value="haute">🔴 Urgente</option>
                 <option value="normale">🔵 Normale</option>
                 <option value="basse">🟢 Basse</option>
               </select>
             </label>
-            <button type="submit">Create request</button>
+            <button type="submit" disabled={dashboardPending}>{dashboardPending ? "Traitement..." : "Create request"}</button>
           </form>
 
           <section className="card stack muted-card">
@@ -1063,8 +1849,29 @@ function AppShell(): JSX.Element {
   function renderPrestataireWorkspace(): JSX.Element {
     const ownServices = services.filter((service) => service.prestataire_id === userId);
     const providerMissions = missions.filter((mission) => mission.prestataire_id === userId);
-    const activeProviderMissions = providerMissions.filter((mission) => mission.status === "en_cours").length;
     const completedProviderMissions = providerMissions.filter((mission) => mission.status === "terminee").length;
+    const myTrust = providerMissions.find((m) => m.prestataire_summary != null)?.prestataire_summary?.trust ?? null;
+    const noteClient = myTrust?.rating ?? null;
+    const tauxAcceptation =
+      providerMissions.length > 0 ? Math.round((completedProviderMissions / providerMissions.length) * 100) : null;
+    const nowDate = new Date();
+    const revenusMonth = providerMissions
+      .filter((m) => {
+        const d = new Date(m.updated_at);
+        return (
+          m.status === "terminee" &&
+          d.getMonth() === nowDate.getMonth() &&
+          d.getFullYear() === nowDate.getFullYear()
+        );
+      })
+      .reduce((sum, m) => {
+        const svc = ownServices.find((s) => s.id === m.service_id);
+        return sum + (svc ? svc.price : 0);
+      }, 0);
+    const perfScore =
+      tauxAcceptation !== null && noteClient !== null
+        ? Math.round(tauxAcceptation * 0.5 + (noteClient / 5) * 100 * 0.5)
+        : tauxAcceptation ?? (noteClient !== null ? Math.round((noteClient / 5) * 100) : null);
     const allVilles = Array.from(new Set(demandes.map((d) => cleanGeo(d.ville)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
     const demandesByVille =
       prestataireVilleFilter === "all"
@@ -1091,6 +1898,58 @@ function AppShell(): JSX.Element {
     });
 
     const topOpportunities = matchingDemandes.slice(0, 3);
+    const newOpportunities = matchingDemandes.filter((d) => d.status === "ouverte");
+    const confirmMissions = providerMissions.filter((m) => missionPipelineStatus(m.status) === "pending");
+    const activeMissionsCol = providerMissions.filter((m) => missionPipelineStatus(m.status) === "active");
+    const closingMissions = providerMissions.filter((m) => missionPipelineStatus(m.status) === "done");
+    const demandeById = new Map<number, Demande>(demandes.map((demande) => [demande.id, demande]));
+    const idQuery = pipelineIdQuery.trim().toLowerCase().replace(/^#/, "");
+    const matchesOpportunityId = (demande: Demande): boolean => {
+      if (!idQuery) {
+        return true;
+      }
+      return String(demande.id).includes(idQuery);
+    };
+    const matchesMissionOrDemandeId = (mission: Mission): boolean => {
+      if (!idQuery) {
+        return true;
+      }
+      return String(mission.id).includes(idQuery) || String(mission.demande_id).includes(idQuery);
+    };
+    const keepOpportunity = (demande: Demande): boolean => {
+      if (!matchesOpportunityId(demande)) {
+        return false;
+      }
+      if (pipelineCardFilter === "all") {
+        return true;
+      }
+      if (pipelineCardFilter === "urgent") {
+        return demande.priority === "haute";
+      }
+      return false;
+    };
+    const keepMission = (mission: Mission): boolean => {
+      if (!matchesMissionOrDemandeId(mission)) {
+        return false;
+      }
+      if (pipelineCardFilter === "all") {
+        return true;
+      }
+      if (pipelineCardFilter === "scheduled") {
+        return mission.scheduled_at != null;
+      }
+      if (pipelineCardFilter === "urgent") {
+        const linkedDemande = demandeById.get(mission.demande_id);
+        return linkedDemande?.priority === "haute";
+      }
+      return true;
+    };
+    const shownOpportunities = newOpportunities.filter(keepOpportunity).slice(0, pipelineVisibleCount);
+    const shownConfirmMissions = confirmMissions.filter(keepMission).slice(0, pipelineVisibleCount);
+    const shownActiveMissions = activeMissionsCol.filter(keepMission).slice(0, pipelineVisibleCount);
+    const shownClosingMissions = closingMissions.filter(keepMission).slice(0, pipelineVisibleCount);
+    const pipelineCardCount =
+      shownOpportunities.length + shownConfirmMissions.length + shownActiveMissions.length + shownClosingMissions.length;
     const recommendation =
       ownServices.length === 0
         ? {
@@ -1149,6 +2008,29 @@ function AppShell(): JSX.Element {
           </div>
         </div>
 
+        <section className="card role-hero role-hero--provider">
+          <div>
+            <h3>Votre cockpit prestataire</h3>
+            <p>
+              {dashboardPending
+                ? "Synchronisation du pipeline et des opportunites..."
+                : `${providerMissions.length} mission(s), ${newOpportunities.length} opportunite(s) disponible(s).`}
+            </p>
+          </div>
+          <div className="role-hero__actions">
+            <button
+              type="button"
+              onClick={() => prestataireCreateServiceRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+              disabled={dashboardPending}
+            >
+              {dashboardPending ? "Patientez..." : "Creer un service"}
+            </button>
+            <button type="button" className="ghost" onClick={() => setPrestataireStatusFilter("ouverte")} disabled={dashboardPending}>
+              Voir opportunites
+            </button>
+          </div>
+        </section>
+
         <section className="card recommendation-card provider-reco">
           <div>
             <h3>{recommendation.title}</h3>
@@ -1159,7 +2041,6 @@ function AppShell(): JSX.Element {
 
         <div className="quick-actions">
           <button type="button" className="ghost" onClick={() => setPrestataireStatusFilter("ouverte")}>Demandes ouvertes</button>
-          <button type="button" className="ghost" onClick={() => setPrestataireStatusFilter("attribuee")}>Demandes attribuees</button>
           <button type="button" className="ghost" onClick={() => setPrestataireStatusFilter("all")}>Tout le marche</button>
         </div>
 
@@ -1199,20 +2080,43 @@ function AppShell(): JSX.Element {
           </select>
         </div>
 
-        <div className="stats-grid">
-          <article className="metric-card">
-            <span>Open requests</span>
-            <strong>{matchingDemandes.length}</strong>
-          </article>
-          <article className="metric-card">
-            <span>My services</span>
-            <strong>{ownServices.length}</strong>
-          </article>
-          <article className="metric-card wide">
-            <span>Missions actives / terminees</span>
-            <strong>{activeProviderMissions} / {completedProviderMissions}</strong>
-          </article>
-        </div>
+        <section className="card perf-kpi-bloc">
+          <div className="perf-kpi-head">
+            <div>
+              <h3>Score de performance</h3>
+              <span className="perf-kpi-score-label">Mis a jour en temps reel</span>
+            </div>
+            <div className={`perf-kpi-score ${dashboardPending ? "skeleton-card" : ""}`}>
+              {dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : (perfScore !== null ? perfScore : "—")}<span>/100</span>
+            </div>
+          </div>
+          <div className="perf-kpi-grid">
+            <div className={`perf-kpi-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : (tauxAcceptation !== null ? `${tauxAcceptation}%` : "—")}</strong>
+              <span>Taux d'acceptation</span>
+            </div>
+            <div className={`perf-kpi-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>
+                {dashboardPending
+                  ? <span className="skeleton-line skeleton-line--md" />
+                  : (myTrust?.average_response_minutes != null
+                  ? myTrust.average_response_minutes < 60
+                    ? `${myTrust.average_response_minutes} min`
+                    : `${Math.floor(myTrust.average_response_minutes / 60)} h${myTrust.average_response_minutes % 60 > 0 ? ` ${myTrust.average_response_minutes % 60} min` : ""}`
+                  : "—")}
+              </strong>
+              <span>Temps de reponse</span>
+            </div>
+            <div className={`perf-kpi-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : (noteClient !== null ? `${noteClient.toFixed(1)}/5` : "—")}</strong>
+              <span>Note client</span>
+            </div>
+            <div className={`perf-kpi-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : (revenusMonth > 0 ? `${revenusMonth.toLocaleString("fr-FR")} FCFA` : "—")}</strong>
+              <span>Revenus du mois</span>
+            </div>
+          </div>
+        </section>
 
         <div className="two-col">
           <section className="card stack">
@@ -1222,28 +2126,32 @@ function AppShell(): JSX.Element {
             </div>
             <div className="helper-line">Opportunites prioritaires (3 plus recentes)</div>
             <ul className="list clean-list compact-list">
-              {topOpportunities.length === 0 ? <li>Aucune opportunite pour ce filtre.</li> : null}
-              {topOpportunities.map((demande) => (
-                <li key={`top-${demande.id}`}>
+              {dashboardPending ? renderSkeletonList("provider-opportunities", 2) : null}
+              {!dashboardPending && topOpportunities.length === 0 ? <li>Aucune opportunite pour ce filtre.</li> : null}
+              {!dashboardPending && topOpportunities.map((demande) => (
+                <li key={`top-${demande.id}`} onClick={() => openDemandDetailModal(demande)} style={{ cursor: 'pointer' }} title="Cliquez pour voir les details">
                   <div className={`status-line ${demandeStatusTone(demande.status)}`}>
                     <span className="status-dot" />
                     <strong>Demande #{demande.id}</strong>
                     <span className={statusChipClass(demande.status)}>{demandeStatusLabel(demande.status)}</span>
                   </div>
                   <div>{demandeGeoLabel(demande)} - {demande.description}</div>
+                  <div className="timeline-line">{clientAvailabilityLabel(demande)}</div>
                 </li>
               ))}
             </ul>
             <ul className="list clean-list">
-              {matchingDemandes.length === 0 ? <li>No requests yet.</li> : null}
-              {matchingDemandes.map((demande) => (
-                <li key={demande.id}>
+              {dashboardPending ? renderSkeletonList("provider-feed") : null}
+              {!dashboardPending && matchingDemandes.length === 0 ? <li>No requests yet.</li> : null}
+              {!dashboardPending && matchingDemandes.map((demande) => (
+                <li key={demande.id} onClick={() => openDemandDetailModal(demande)} style={{ cursor: 'pointer' }} title="Cliquez pour voir les details">
                   <div className={`status-line ${demandeStatusTone(demande.status)}`}>
                     <span className="status-dot" />
                     <strong>Demande #{demande.id}</strong>
                     <span className={statusChipClass(demande.status)}>{demandeStatusLabel(demande.status)}</span>
                   </div>
                   <div>{demandeGeoLabel(demande)} - {demande.description}</div>
+                  <div className="timeline-line">{clientAvailabilityLabel(demande)}</div>
                 </li>
               ))}
             </ul>
@@ -1255,10 +2163,12 @@ function AppShell(): JSX.Element {
               <span>{dashboardPending ? "Loading..." : "Synced"}</span>
             </div>
             <ul className="list clean-list">
-              {ownServices.length === 0 ? <li>No services yet.</li> : null}
-              {ownServices.map((service) => (
+              {dashboardPending ? renderSkeletonList("provider-services") : null}
+              {!dashboardPending && ownServices.length === 0 ? <li>No services yet.</li> : null}
+              {!dashboardPending && ownServices.map((service) => (
                 <li key={service.id}>
                   <strong>#{service.id}</strong> {service.name} - {service.price}
+                  <div className="timeline-line">Disponibilites: {service.availability_slots}</div>
                 </li>
               ))}
             </ul>
@@ -1277,10 +2187,14 @@ function AppShell(): JSX.Element {
               <textarea name="description" required />
             </label>
             <label>
+              <span>Disponibilite (obligatoire)</span>
+              <textarea name="availability_slots" placeholder="Ex: Lun-Ven 08h-17h, Sam 09h-12h" minLength={3} required />
+            </label>
+            <label>
               <span>Price</span>
               <input type="number" name="price" min="0" step="1" required />
             </label>
-            <button type="submit">Create service</button>
+            <button type="submit" disabled={dashboardPending}>{dashboardPending ? "Traitement..." : "Create service"}</button>
           </form>
 
           <section className="card stack muted-card">
@@ -1289,95 +2203,149 @@ function AppShell(): JSX.Element {
           </section>
         </div>
 
-        <section className="card stack kanban-section">
+        <section className="card stack pipeline-section">
           <div className="section-head">
-            <h3>Mes missions — Kanban</h3>
+            <h3>Pipeline des missions</h3>
             <span>{dashboardPending ? "Loading..." : `${providerMissions.length} mission(s)`}</span>
           </div>
-          {providerMissions.length === 0 ? (
+          <div className="pipeline-toolbar">
+            <label>
+              <span>Affichage</span>
+              <select
+                className="styled-select"
+                value={pipelineVisibleCount}
+                onChange={(event) => setPipelineVisibleCount(Number(event.target.value) as 5 | 10)}
+              >
+                <option value={5}>5 cartes / colonne</option>
+                <option value={10}>10 cartes / colonne</option>
+              </select>
+            </label>
+            <label>
+              <span>Filtre</span>
+              <select
+                className="styled-select"
+                value={pipelineCardFilter}
+                onChange={(event) => setPipelineCardFilter(event.target.value as PipelineCardFilter)}
+              >
+                <option value="all">Toutes les cartes</option>
+                <option value="urgent">Priorite urgente</option>
+                <option value="scheduled">Intervention planifiee</option>
+              </select>
+            </label>
+            <label>
+              <span>Recherche ID</span>
+              <input
+                type="text"
+                value={pipelineIdQuery}
+                onChange={(event) => setPipelineIdQuery(event.target.value)}
+                placeholder="Mission #12 ou Demande #34"
+                className="pipeline-search-input"
+              />
+            </label>
+          </div>
+          {providerMissions.length === 0 && newOpportunities.length === 0 ? (
             <p className="helper-line">Aucune mission assignee pour le moment. Acceptez une demande pour commencer.</p>
+          ) : pipelineCardCount === 0 ? (
+            <p className="helper-line">Aucune carte ne correspond au filtre selectionne.</p>
           ) : (
-            <div className="kanban-board">
-              {/* Column: En attente / Acceptée */}
-              <div className="kanban-col kanban-col--pending">
-                <div className="kanban-col__header">
-                  <span className="kanban-col__dot" />
-                  <strong>En attente</strong>
-                  <span className="kanban-count">{providerMissions.filter((m) => missionKanbanStatus(m.status) === "pending").length}</span>
+            <div className="pipeline-board">
+
+              {/* Col 1: Nouvelles opportunités */}
+              <div className="pipeline-col pipeline-col--new">
+                <div className="pipeline-col__header">
+                  <span className="pipeline-col__dot" />
+                  <strong>Nouvelles opportunités</strong>
+                  <span className="pipeline-count">{shownOpportunities.length}</span>
                 </div>
-                {providerMissions.filter((m) => missionKanbanStatus(m.status) === "pending").map((m) => (
-                  <div key={m.id} className="kanban-card">
-                    <div className="kanban-card__title">Mission #{m.id}</div>
-                    <div className="kanban-card__meta">Demande #{m.demande_id}</div>
-                    <div className="kanban-card__meta">Depuis: {formatDateTime(m.created_at)}</div>
-                    {m.scheduled_at ? (
-                      <div className="kanban-card__eta">📅 {formatDateTime(m.scheduled_at)}</div>
-                    ) : null}
-                    <div className="kanban-card__actions">
+                {shownOpportunities.map((demande) => (
+                  <div
+                    key={`opp-${demande.id}`}
+                    className="pipeline-card pipeline-card--new"
+                    onClick={() => openDemandDetailModal(demande)}
+                    title="Voir les details"
+                  >
+                    <div className="pipeline-card__title">Demande #{demande.id}</div>
+                    <div className="pipeline-card__meta">{demandeGeoLabel(demande)}</div>
+                    <div className="pipeline-card__meta">{demande.description.slice(0, 55)}{demande.description.length > 55 ? "…" : ""}</div>
+                    <span className={priorityClass(demande.priority)}>{priorityLabel(demande.priority)}</span>
+                  </div>
+                ))}
+                {shownOpportunities.length === 0 ? <div className="pipeline-empty">Aucune opportunite</div> : null}
+              </div>
+
+              {/* Col 2: À confirmer */}
+              <div className="pipeline-col pipeline-col--pending">
+                <div className="pipeline-col__header">
+                  <span className="pipeline-col__dot" />
+                  <strong>À confirmer</strong>
+                  <span className="pipeline-count">{shownConfirmMissions.length}</span>
+                </div>
+                {shownConfirmMissions.map((m) => (
+                  <div key={m.id} className="pipeline-card">
+                    <div className="pipeline-card__title">Mission #{m.id}</div>
+                    <div className="pipeline-card__meta">Demande #{m.demande_id}</div>
+                    <div className="pipeline-card__meta">Depuis: {formatDateTime(m.created_at)}</div>
+                    {m.scheduled_at ? <div className="pipeline-card__eta">📅 {formatDateTime(m.scheduled_at)}</div> : null}
+                    <div className="pipeline-card__actions">
                       <button
                         type="button"
-                        className="kanban-btn kanban-btn--start"
+                        className="pipeline-btn pipeline-btn--start"
+                        disabled={dashboardPending || missionPendingId === m.id}
                         onClick={() => void handleUpdateMissionStatus(m.id, "en_cours")}
                       >
-                        Démarrer
+                        {missionPendingId === m.id ? "Traitement..." : "Démarrer"}
                       </button>
                     </div>
                   </div>
                 ))}
-                {providerMissions.filter((m) => missionKanbanStatus(m.status) === "pending").length === 0 ? (
-                  <div className="kanban-empty">Aucune mission</div>
-                ) : null}
+                {shownConfirmMissions.length === 0 ? <div className="pipeline-empty">Aucune mission</div> : null}
               </div>
 
-              {/* Column: En cours */}
-              <div className="kanban-col kanban-col--active">
-                <div className="kanban-col__header">
-                  <span className="kanban-col__dot" />
+              {/* Col 3: En cours */}
+              <div className="pipeline-col pipeline-col--active">
+                <div className="pipeline-col__header">
+                  <span className="pipeline-col__dot" />
                   <strong>En cours</strong>
-                  <span className="kanban-count">{providerMissions.filter((m) => missionKanbanStatus(m.status) === "active").length}</span>
+                  <span className="pipeline-count">{shownActiveMissions.length}</span>
                 </div>
-                {providerMissions.filter((m) => missionKanbanStatus(m.status) === "active").map((m) => (
-                  <div key={m.id} className="kanban-card kanban-card--active">
-                    <div className="kanban-card__title">Mission #{m.id}</div>
-                    <div className="kanban-card__meta">Demande #{m.demande_id}</div>
-                    <div className="kanban-card__meta">Depuis: {formatDateTime(m.updated_at)}</div>
-                    {m.scheduled_at ? (
-                      <div className="kanban-card__eta">📅 {formatDateTime(m.scheduled_at)}</div>
-                    ) : null}
-                    <div className="kanban-card__actions">
+                {shownActiveMissions.map((m) => (
+                  <div key={m.id} className="pipeline-card pipeline-card--active">
+                    <div className="pipeline-card__title">Mission #{m.id}</div>
+                    <div className="pipeline-card__meta">Demande #{m.demande_id}</div>
+                    <div className="pipeline-card__meta">Depuis: {formatDateTime(m.updated_at)}</div>
+                    {m.scheduled_at ? <div className="pipeline-card__eta">📅 {formatDateTime(m.scheduled_at)}</div> : null}
+                    <div className="pipeline-card__actions">
                       <button
                         type="button"
-                        className="kanban-btn kanban-btn--done"
+                        className="pipeline-btn pipeline-btn--done"
+                        disabled={dashboardPending || missionPendingId === m.id}
                         onClick={() => void handleUpdateMissionStatus(m.id, "terminee")}
                       >
-                        Terminer
+                        {missionPendingId === m.id ? "Traitement..." : "Terminer"}
                       </button>
                     </div>
                   </div>
                 ))}
-                {providerMissions.filter((m) => missionKanbanStatus(m.status) === "active").length === 0 ? (
-                  <div className="kanban-empty">Aucune mission</div>
-                ) : null}
+                {shownActiveMissions.length === 0 ? <div className="pipeline-empty">Aucune mission</div> : null}
               </div>
 
-              {/* Column: Terminée */}
-              <div className="kanban-col kanban-col--done">
-                <div className="kanban-col__header">
-                  <span className="kanban-col__dot" />
-                  <strong>Terminée</strong>
-                  <span className="kanban-count">{providerMissions.filter((m) => missionKanbanStatus(m.status) === "done").length}</span>
+              {/* Col 4: À clôturer */}
+              <div className="pipeline-col pipeline-col--closing">
+                <div className="pipeline-col__header">
+                  <span className="pipeline-col__dot" />
+                  <strong>À clôturer</strong>
+                  <span className="pipeline-count">{shownClosingMissions.length}</span>
                 </div>
-                {providerMissions.filter((m) => missionKanbanStatus(m.status) === "done").map((m) => (
-                  <div key={m.id} className="kanban-card kanban-card--done">
-                    <div className="kanban-card__title">Mission #{m.id}</div>
-                    <div className="kanban-card__meta">Demande #{m.demande_id}</div>
-                    <div className="kanban-card__meta">Terminee: {formatDateTime(m.updated_at)}</div>
+                {shownClosingMissions.map((m) => (
+                  <div key={m.id} className="pipeline-card pipeline-card--closing">
+                    <div className="pipeline-card__title">Mission #{m.id}</div>
+                    <div className="pipeline-card__meta">Demande #{m.demande_id}</div>
+                    <div className="pipeline-card__meta">Cloturee: {formatDateTime(m.updated_at)}</div>
                   </div>
                 ))}
-                {providerMissions.filter((m) => missionKanbanStatus(m.status) === "done").length === 0 ? (
-                  <div className="kanban-empty">Aucune mission</div>
-                ) : null}
+                {shownClosingMissions.length === 0 ? <div className="pipeline-empty">Aucune mission</div> : null}
               </div>
+
             </div>
           )}
         </section>
@@ -1386,6 +2354,16 @@ function AppShell(): JSX.Element {
   }
 
   function renderAdminWorkspace(): JSX.Element {
+    const providerUsers = users.filter((user) => user.role === "prestataire");
+    const providerRows = providerUsers.map((user) => ({
+      user,
+      provider: prestataires.find((item) => item.user_id === user.id) || null,
+    }));
+    const openDemandes = demandes.filter((demande) => demande.status === "ouverte").length;
+    const activeMissionsAdmin = missions.filter((mission) => mission.status === "en_cours").length;
+    const verifiedProviders = providerRows.filter((row) => row.provider?.verified).length;
+    const pendingVerification = providerRows.length - verifiedProviders;
+
     return (
       <section className="panel dashboard-panel">
         <div className="dashboard-title">
@@ -1403,20 +2381,81 @@ function AppShell(): JSX.Element {
           </div>
         </div>
 
+        <section className="card role-hero role-hero--admin">
+          <div>
+            <h3>Pilotage global de la plateforme</h3>
+            <p>
+              {dashboardPending
+                ? "Consolidation des indicateurs en cours..."
+                : `${demandes.length} demandes, ${missions.length} missions, ${providerRows.length} prestataire(s).`}
+            </p>
+          </div>
+          <div className="role-hero__actions">
+            <button type="button" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
+              {dashboardPending ? "Actualisation..." : "Actualiser le tableau"}
+            </button>
+            <button type="button" className="ghost" onClick={() => window.scrollTo({ top: 1000, behavior: "smooth" })}>
+              Vérifications prestataires
+            </button>
+          </div>
+        </section>
+
+        <div className="quick-actions">
+          <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>Refresh</button>
+          <button type="button" className="ghost" onClick={logout}>Logout</button>
+        </div>
+
+        <section className="card recommendation-card admin-reco">
+          <div>
+            <h3>Action prioritaire</h3>
+            <p>
+              {pendingVerification > 0
+                ? `${pendingVerification} prestataire(s) a verifier pour renforcer la confiance.`
+                : "Aucune verification en attente. Vous pouvez suivre les demandes ouvertes."}
+            </p>
+          </div>
+          <button type="button" onClick={() => window.scrollTo({ top: 1000, behavior: "smooth" })}>Traiter maintenant</button>
+        </section>
+
         <div className="stats-grid">
-          <article className="metric-card">
-            <span>Total requests</span>
-            <strong>{demandes.length}</strong>
+          <article className={`metric-card ${dashboardPending ? "skeleton-card" : ""}`}>
+            <span>Demandes ouvertes</span>
+            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : openDemandes}</strong>
           </article>
-          <article className="metric-card">
-            <span>Total services</span>
-            <strong>{services.length}</strong>
+          <article className={`metric-card ${dashboardPending ? "skeleton-card" : ""}`}>
+            <span>Missions actives</span>
+            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : activeMissionsAdmin}</strong>
           </article>
-          <article className="metric-card wide">
-            <span>Workspace</span>
-            <strong>Admin</strong>
+          <article className={`metric-card wide ${dashboardPending ? "skeleton-card" : ""}`}>
+            <span>Prestataires verifies</span>
+            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : (providerRows.length === 0 ? "0" : `${verifiedProviders}/${providerRows.length}`)}</strong>
           </article>
         </div>
+
+        <section className="card stack today-overview-card">
+          <div className="section-head">
+            <h3>Alertes operationnelles</h3>
+            <span>{dashboardPending ? "Mise a jour..." : "A surveiller"}</span>
+          </div>
+          <div className="today-overview-grid">
+            <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : pendingVerification}</strong>
+              <span>Prestataires en attente</span>
+            </div>
+            <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : openDemandes}</strong>
+              <span>Demandes a attribuer</span>
+            </div>
+            <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : services.length}</strong>
+              <span>Services publies</span>
+            </div>
+            <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
+              <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : users.length}</strong>
+              <span>Comptes suivis</span>
+            </div>
+          </div>
+        </section>
 
         <div className="two-col">
           <section className="card stack">
@@ -1425,8 +2464,9 @@ function AppShell(): JSX.Element {
               <span>{dashboardPending ? "Loading..." : "Synced"}</span>
             </div>
             <ul className="list clean-list">
-              {demandes.length === 0 ? <li>No requests yet.</li> : null}
-              {demandes.map((demande) => (
+              {dashboardPending ? renderSkeletonList("admin-demandes") : null}
+              {!dashboardPending && demandes.length === 0 ? <li>No requests yet.</li> : null}
+              {!dashboardPending && demandes.map((demande) => (
                 <li key={demande.id}>
                   <strong>#{demande.id}</strong> [{demande.status}] {demandeGeoLabel(demande)} - {demande.description}
                 </li>
@@ -1440,8 +2480,9 @@ function AppShell(): JSX.Element {
               <span>{dashboardPending ? "Loading..." : "Synced"}</span>
             </div>
             <ul className="list clean-list">
-              {services.length === 0 ? <li>No services yet.</li> : null}
-              {services.map((service) => (
+              {dashboardPending ? renderSkeletonList("admin-services") : null}
+              {!dashboardPending && services.length === 0 ? <li>No services yet.</li> : null}
+              {!dashboardPending && services.map((service) => (
                 <li key={service.id}>
                   <strong>#{service.id}</strong> {service.name} - {service.price} (provider {service.prestataire_id})
                 </li>
@@ -1449,6 +2490,38 @@ function AppShell(): JSX.Element {
             </ul>
           </section>
         </div>
+
+        <section className="card stack">
+          <div className="section-head">
+            <h3>Verification prestataires</h3>
+            <span>{dashboardPending ? "Mise a jour..." : `${providerRows.length} comptes prestataires`}</span>
+          </div>
+          <ul className="list clean-list">
+            {dashboardPending ? renderSkeletonList("admin-verify") : null}
+            {!dashboardPending && providerRows.length === 0 ? <li>Aucun prestataire.</li> : null}
+            {!dashboardPending && providerRows.map(({ user, provider }) => (
+              <li key={user.id} className="admin-provider-row">
+                <div className="admin-provider-copy">
+                  <strong>{user.first_name} {user.last_name}</strong>
+                  <div className="timeline-line">@{user.username} — {formatCameroonPhone(user.phone)}</div>
+                  <div className="timeline-line">{user.email}</div>
+                </div>
+                <div className="admin-provider-actions">
+                  <span className={provider?.verified ? "trust-badge trust-badge--verified" : "trust-badge"}>
+                    {provider?.verified ? "Verifie" : "Non verifie"}
+                  </span>
+                  <button
+                    type="button"
+                    className="ghost inline-ghost"
+                    onClick={() => void handleTogglePrestataireVerified(user.id, !provider?.verified)}
+                  >
+                    {provider?.verified ? "Retirer la verification" : "Marquer comme verifie"}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       </section>
     );
   }
@@ -1571,6 +2644,292 @@ function AppShell(): JSX.Element {
         </Routes>
       </main>
 
+      {selectedDemandForDetail ? (
+        <div className={`demand-detail-modal ${demandDetailClosing ? "is-closing" : "is-open"}`} role="dialog" aria-modal="true" aria-label="Details de la demande">
+          <div className="demand-detail-panel">
+            <div className="demand-detail-header">
+              <div>
+                <h2>Demande #{selectedDemandForDetail.id}</h2>
+                <span className={statusChipClass(selectedDemandForDetail.status)}>{demandeStatusLabel(selectedDemandForDetail.status)}</span>
+              </div>
+              <button type="button" className="ghost" onClick={closeDemandDetailModal} title="Fermer">✕</button>
+            </div>
+
+            <div className="demand-detail-content">
+              <section className="demand-section">
+                <h3>Description</h3>
+                <p className="demand-description">{selectedDemandForDetail.description}</p>
+              </section>
+
+              <section className="demand-section">
+                <h3>Localisation</h3>
+                <div className="demand-geo-grid">
+                  <div>
+                    <strong>Adresse</strong>
+                    <p>{selectedDemandForDetail.location}</p>
+                  </div>
+                  <div>
+                    <strong>Ville</strong>
+                    <p>{selectedDemandForDetail.ville || "—"}</p>
+                  </div>
+                  <div>
+                    <strong>Arrondissement</strong>
+                    <p>{selectedDemandForDetail.arrondissement || "—"}</p>
+                  </div>
+                  <div>
+                    <strong>Quartier</strong>
+                    <p>{selectedDemandForDetail.quartier || "—"}</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="demand-section">
+                <h3>Disponibilités du client</h3>
+                <div className="demand-availability">
+                  <div>
+                    <strong>Mode</strong>
+                    <p>{selectedDemandForDetail.client_availability_mode === "fixe" ? "Planning fixe" : "Flexible"}</p>
+                  </div>
+                  {selectedDemandForDetail.client_availability_note && (
+                    <div>
+                      <strong>Détails</strong>
+                      <p>{selectedDemandForDetail.client_availability_note}</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="demand-section">
+                <h3>Priorité</h3>
+                <div className="priority-badge" data-priority={selectedDemandForDetail.priority}>
+                  {selectedDemandForDetail.priority === "haute" && "🔴 Urgente"}
+                  {selectedDemandForDetail.priority === "normale" && "🔵 Normale"}
+                  {selectedDemandForDetail.priority === "basse" && "🟢 Basse"}
+                </div>
+              </section>
+
+              {selectedDemandForDetail.events && selectedDemandForDetail.events.length > 0 && (
+                <section className="demand-section">
+                  <h3>Historique</h3>
+                  <ul className="timeline clean-list">
+                    {selectedDemandForDetail.events.map((event) => {
+                      const stepBadge = demandeEventStepBadge(event);
+                      return (
+                        <li key={event.id} className="timeline-item">
+                          <span className="timeline-marker" />
+                          <div className="timeline-content">
+                            <div className="timeline-line timeline-line--event">
+                              <strong className="timeline-event-title">{demandeEventText(event)}</strong>
+                              {stepBadge ? (
+                                <span className={`step-badge step-badge--${stepBadge.key}`}>{stepBadge.label}</span>
+                              ) : null}
+                            </div>
+                            {event.previous_status && event.new_status ? (
+                              <p className="timeline-detail">Transition: {formatStatusLabel(event.previous_status)} {"->"} {formatStatusLabel(event.new_status)}</p>
+                            ) : null}
+                            {demandeEventActor(event) !== "Systeme" ? (
+                              <p className="timeline-detail">Par: {demandeEventActor(event)}</p>
+                            ) : null}
+                            <time className="timeline-time">{formatDateTime(event.created_at)}</time>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
+            </div>
+
+            <div className="demand-detail-actions">
+              <button type="button" className="ghost" onClick={closeDemandDetailModal}>Fermer</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editDemandeTarget && editDemandeDraft ? (
+        <div className={`action-modal ${editModalClosing ? "is-closing" : "is-open"}`} role="dialog" aria-modal="true" aria-label="Modifier la demande">
+          <form className="action-modal__panel stack" onSubmit={(event) => void handleConfirmEditDemande(event)}>
+            <div className="section-head">
+              <h3>Modifier la demande #{editDemandeTarget.id}</h3>
+              <button type="button" className="ghost" onClick={closeEditDemandeModal} disabled={editDemandePending}>✕</button>
+            </div>
+            <label>
+              <span>Description</span>
+              <textarea
+                value={editDemandeDraft.description}
+                onChange={(event) => setEditDemandeDraft((prev) => prev ? { ...prev, description: event.target.value } : prev)}
+                required
+              />
+            </label>
+            <div className="two-col">
+              <label>
+                <span>Ville</span>
+                <input
+                  type="text"
+                  value={editDemandeDraft.ville}
+                  onChange={(event) => setEditDemandeDraft((prev) => prev ? { ...prev, ville: event.target.value } : prev)}
+                  required
+                />
+              </label>
+              <label>
+                <span>Arrondissement</span>
+                <input
+                  type="text"
+                  value={editDemandeDraft.arrondissement}
+                  onChange={(event) => setEditDemandeDraft((prev) => prev ? { ...prev, arrondissement: event.target.value } : prev)}
+                  required
+                />
+              </label>
+            </div>
+            <div className="two-col">
+              <label>
+                <span>Quartier</span>
+                <input
+                  type="text"
+                  value={editDemandeDraft.quartier}
+                  onChange={(event) => setEditDemandeDraft((prev) => prev ? { ...prev, quartier: event.target.value } : prev)}
+                  required
+                />
+              </label>
+              <label>
+                <span>Priorité</span>
+                <select
+                  className="styled-select"
+                  value={editDemandeDraft.priority}
+                  onChange={(event) => setEditDemandeDraft((prev) => prev ? { ...prev, priority: event.target.value } : prev)}
+                >
+                  <option value="haute">🔴 Urgente</option>
+                  <option value="normale">🔵 Normale</option>
+                  <option value="basse">🟢 Basse</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>Disponibilité client</span>
+              <select
+                className="styled-select"
+                value={editDemandeDraft.client_availability_mode}
+                onChange={(event) =>
+                  setEditDemandeDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          client_availability_mode: event.target.value === "fixe" ? "fixe" : "flexible",
+                        }
+                      : prev
+                  )
+                }
+              >
+                <option value="flexible">Flexible</option>
+                <option value="fixe">Planning fixe</option>
+              </select>
+            </label>
+            <label>
+              <span>Détails disponibilité</span>
+              <input
+                type="text"
+                value={editDemandeDraft.client_availability_note}
+                onChange={(event) =>
+                  setEditDemandeDraft((prev) => prev ? { ...prev, client_availability_note: event.target.value } : prev)
+                }
+                placeholder="Optionnel si flexible"
+              />
+            </label>
+            <div className="action-modal__actions">
+              <button type="button" className="ghost" onClick={closeEditDemandeModal} disabled={editDemandePending}>Annuler</button>
+              <button type="submit" disabled={editDemandePending}>{editDemandePending ? "Enregistrement..." : "Enregistrer"}</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {demandeCancelId !== null ? (
+        <div className={`action-modal ${cancelModalClosing ? "is-closing" : "is-open"}`} role="dialog" aria-modal="true" aria-label="Confirmer l'annulation">
+          <div className="action-modal__panel stack">
+            <h3>Annuler la demande #{demandeCancelId} ?</h3>
+            <p>Cette action est irreversible pour cette demande.</p>
+            <div className="action-modal__actions">
+              <button type="button" className="ghost" onClick={closeCancelDemandeModal}>Retour</button>
+              <button type="button" onClick={() => void confirmCancelDemande()}>Confirmer l'annulation</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {unregisterModalOpen ? (
+        <div className={`action-modal ${unregisterModalClosing ? "is-closing" : "is-open"}`} role="dialog" aria-modal="true" aria-label="Confirmer la desinscription">
+          <div className="action-modal__panel stack">
+            <h3>Confirmer la désinscription</h3>
+            <p>Entrez votre mot de passe pour supprimer votre compte.</p>
+            <label>
+              <span>Mot de passe</span>
+              <input
+                type="password"
+                value={unregisterPassword}
+                onChange={(event) => setUnregisterPassword(event.target.value)}
+                placeholder="Votre mot de passe"
+              />
+            </label>
+            <div className="action-modal__actions">
+              <button type="button" className="ghost" onClick={closeUnregisterModal} disabled={unregisterPending}>Annuler</button>
+              <button type="button" onClick={() => void confirmUnregister()} disabled={unregisterPending}>
+                {unregisterPending ? "Suppression..." : "Supprimer mon compte"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {cropModalOpen && cropImageSize ? (
+        <div className={`avatar-crop-modal ${cropModalClosing ? "is-closing" : "is-open"}`} role="dialog" aria-modal="true" aria-label="Recadrer la photo de profil">
+          <div className="avatar-crop-panel">
+            <h3>Recadrer la photo</h3>
+            <p>Faites glisser l'image et ajustez le zoom.</p>
+
+            <div
+              className="avatar-crop-stage"
+              onPointerDown={onCropPointerDown}
+              onPointerMove={onCropPointerMove}
+              onPointerUp={onCropPointerUp}
+              onPointerCancel={onCropPointerUp}
+            >
+              <img
+                src={cropSourceDataUrl}
+                alt="Apercu recadrage"
+                className="avatar-crop-image"
+                draggable={false}
+                style={{
+                  width: `${avatarDisplaySize(cropImageSize.width, cropImageSize.height, cropZoom).width}px`,
+                  height: `${avatarDisplaySize(cropImageSize.width, cropImageSize.height, cropZoom).height}px`,
+                  transform: `translate(-50%, -50%) translate(${cropOffsetX}px, ${cropOffsetY}px)`,
+                }}
+              />
+              <div className="avatar-crop-mask" />
+            </div>
+
+            <div className="avatar-crop-controls">
+              <span>Zoom</span>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.01"
+                value={cropZoom}
+                onChange={(event) => handleCropZoomChange(Number(event.target.value))}
+              />
+            </div>
+
+            <div className="avatar-crop-actions">
+              <button type="button" className="ghost" onClick={closeCropModal} disabled={cropPending}>Annuler</button>
+              <button type="button" onClick={() => void confirmCropSelection()} disabled={cropPending}>
+                {cropPending ? "Application..." : "Appliquer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {toast ? <div className={`toast ${toast.kind}`}>{toast.message}</div> : null}
     </div>
   );
@@ -1579,3 +2938,4 @@ function AppShell(): JSX.Element {
 export default function App(): JSX.Element {
   return <AppShell />;
 }
+

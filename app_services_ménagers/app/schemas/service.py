@@ -9,6 +9,7 @@ class ServiceCreate(AppBaseModel):
     prestataire_id: int
     name: str = Field(min_length=2, max_length=120)
     description: str = Field(default="", max_length=1000)
+    availability_slots: str = Field(min_length=3, max_length=1000)
     price: float = Field(ge=0)
 
 
@@ -17,6 +18,7 @@ class ServiceRead(AppBaseModel):
     prestataire_id: int
     name: str
     description: str
+    availability_slots: str
     price: float
     is_active: bool
     created_at: datetime

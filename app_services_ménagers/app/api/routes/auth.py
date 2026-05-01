@@ -48,8 +48,8 @@ def update_avatar(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> UserRead:
-    if len(payload.avatar_url) > 600_000:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Image trop grande (max 450 Ko)")
+    if len(payload.avatar_url) > 3_000_000:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Image trop grande (max 2 Mo)")
     current_user.avatar_url = payload.avatar_url
     db.commit()
     db.refresh(current_user)

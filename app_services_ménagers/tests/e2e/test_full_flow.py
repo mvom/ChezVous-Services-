@@ -30,6 +30,9 @@ def test_client_to_prestataire_full_flow(client):
             "client_id": created_client["id"],
             "description": "Nettoyage appartement 2 pieces",
             "location": "Dakar Plateau",
+            "ville": "Dakar",
+            "arrondissement": "Plateau",
+            "quartier": "Plateau",
         },
     )
     assert demande_response.status_code == 201, demande_response.text
@@ -42,6 +45,7 @@ def test_client_to_prestataire_full_flow(client):
             "prestataire_id": created_prestataire["id"],
             "name": "Menage hebdomadaire",
             "description": "Service standard",
+            "availability_slots": "Lun-Sam 08h-17h",
             "price": 15000,
         },
     )

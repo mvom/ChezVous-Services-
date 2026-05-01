@@ -23,10 +23,27 @@ class MissionCreate(AppBaseModel):
     client_id: int
     prestataire_id: int
     service_id: Optional[int] = None
+    scheduled_at: Optional[datetime] = None
 
 
 class MissionUpdateStatus(AppBaseModel):
     status: MissionStatus
+
+
+class PrestataireTrustRead(AppBaseModel):
+    verified: bool = False
+    rating: float = 0.0
+    completed_missions: int = 0
+    total_missions: int = 0
+    average_response_minutes: int | None = None
+    eta_reliability_percent: int = 0
+
+
+class PrestataireMissionSummaryRead(AppBaseModel):
+    user_id: int
+    display_name: str
+    avatar_url: str | None = None
+    trust: PrestataireTrustRead
 
 
 class MissionRead(AppBaseModel):
@@ -39,3 +56,4 @@ class MissionRead(AppBaseModel):
     scheduled_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    prestataire_summary: PrestataireMissionSummaryRead | None = None

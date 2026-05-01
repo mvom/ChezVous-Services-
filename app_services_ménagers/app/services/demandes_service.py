@@ -3,7 +3,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import Client, Demande, DemandeEvent, User
-from app.schemas.demande import DemandeCreate, DemandeRead, DemandeStatus
+from app.schemas.demande import DemandeClientUpdate, DemandeCreate, DemandeRead, DemandeStatus
+from app.schemas.user import UserRole
 
 
 def _actor_label(actor_user: User | None) -> str | None:
@@ -53,6 +54,12 @@ class DemandesService:
             ville=ville,
             arrondissement=arrondissement,
             quartier=quartier,
+            client_availability_mode=(
+                payload.client_availability_mode.value
+                if hasattr(payload.client_availability_mode, "value")
+                else str(payload.client_availability_mode)
+            ),
+            client_availability_note=(payload.client_availability_note or "").strip() or None,
             priority=payload.priority.value if hasattr(payload.priority, "value") else str(payload.priority),
             status=DemandeStatus.OUVERTE,
         )
@@ -66,6 +73,53 @@ class DemandesService:
             previous_status=None,
             new_status=DemandeStatus.OUVERTE.value,
         )
+        db.commit()
+        db.refresh(demande)
+        return DemandeRead.model_validate(demande)
+
+    def update_by_client(
+        self,
+        db: Session,
+        demande_id: int,
+        payload: DemandeClientUpdate,
+        actor_user: User,
+    ) -> DemandeRead:
+        demande = self.get_demande(db, demande_id)
+        if actor_user.role == UserRole.CLIENT and demande.client_id != actor_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vous ne pouvez modifier que vos demandes")
+        if actor_user.role == UserRole.CLIENT and demande.status != DemandeStatus.OUVERTE:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Modification impossible: la demande est deja en cours de prise en charge",
+            )
+
+        ville = payload.ville.strip()
+        arrondissement = payload.arrondissement.strip()
+        quartier = payload.quartier.strip()
+        composed_location = ", ".join([ville, arrondissement, quartier])
+
+        demande.description = payload.description
+        demande.ville = ville
+        demande.arrondissement = arrondissement
+        demande.quartier = quartier
+        demande.location = (payload.location or composed_location).strip()
+        demande.client_availability_mode = (
+            payload.client_availability_mode.value
+            if hasattr(payload.client_availability_mode, "value")
+            else str(payload.client_availability_mode)
+        )
+        demande.client_availability_note = (payload.client_availability_note or "").strip() or None
+        demande.priority = payload.priority.value if hasattr(payload.priority, "value") else str(payload.priority)
+
+        record_demande_event(
+            db,
+            demande,
+            event_type="modifiee",
+            actor_user=actor_user,
+            previous_status=demande.status.value,
+            new_status=demande.status.value,
+        )
+
         db.commit()
         db.refresh(demande)
         return DemandeRead.model_validate(demande)
@@ -108,6 +162,18 @@ class DemandesService:
         db.commit()
         db.refresh(demande)
         return DemandeRead.model_validate(demande)
+
+    def cancel_by_client(self, db: Session, demande_id: int, actor_user: User) -> DemandeRead:
+        demande = self.get_demande(db, demande_id)
+        if actor_user.role == UserRole.CLIENT and demande.client_id != actor_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vous ne pouvez annuler que vos demandes")
+        if demande.status != DemandeStatus.OUVERTE:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Annulation impossible: la demande n'est plus ouverte",
+            )
+
+        return self.update_status(db, demande_id, DemandeStatus.ANNULEE, actor_user=actor_user)
 
 
 demandes_service = DemandesService()

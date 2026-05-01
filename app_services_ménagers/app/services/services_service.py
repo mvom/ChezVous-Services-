@@ -16,6 +16,7 @@ class ServicesService:
             prestataire_id=payload.prestataire_id,
             name=payload.name,
             description=payload.description,
+            availability_slots=payload.availability_slots.strip(),
             price=payload.price,
             is_active=True,
         )

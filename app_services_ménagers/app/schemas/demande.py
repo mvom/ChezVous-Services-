@@ -20,6 +20,11 @@ class DemandePriority(StrEnum):
     BASSE = "basse"
 
 
+class ClientAvailabilityMode(StrEnum):
+    FLEXIBLE = "flexible"
+    FIXE = "fixe"
+
+
 class DemandeCreate(AppBaseModel):
     client_id: int
     description: str = Field(min_length=5)
@@ -27,6 +32,19 @@ class DemandeCreate(AppBaseModel):
     ville: str = Field(min_length=2, max_length=80)
     arrondissement: str = Field(min_length=2, max_length=80)
     quartier: str = Field(min_length=2, max_length=120)
+    client_availability_mode: ClientAvailabilityMode = ClientAvailabilityMode.FLEXIBLE
+    client_availability_note: str | None = Field(default=None, max_length=255)
+    priority: DemandePriority = DemandePriority.NORMALE
+
+
+class DemandeClientUpdate(AppBaseModel):
+    description: str = Field(min_length=5)
+    location: str | None = Field(default=None, min_length=3, max_length=255)
+    ville: str = Field(min_length=2, max_length=80)
+    arrondissement: str = Field(min_length=2, max_length=80)
+    quartier: str = Field(min_length=2, max_length=120)
+    client_availability_mode: ClientAvailabilityMode = ClientAvailabilityMode.FLEXIBLE
+    client_availability_note: str | None = Field(default=None, max_length=255)
     priority: DemandePriority = DemandePriority.NORMALE
 
 
@@ -52,6 +70,8 @@ class DemandeRead(AppBaseModel):
     ville: str | None = None
     arrondissement: str | None = None
     quartier: str | None = None
+    client_availability_mode: str = "flexible"
+    client_availability_note: str | None = None
     priority: str = "normale"
     status: DemandeStatus
     created_at: datetime
