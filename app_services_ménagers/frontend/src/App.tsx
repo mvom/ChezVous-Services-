@@ -1,5 +1,13 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  AVAILABILITY_LABELS,
+  EVENT_TEXT,
+  PRIORITY_CLASSES,
+  PRIORITY_LABELS,
+  STATUS_LABELS,
+  STEP_LABELS,
+} from "./labels";
 
 type Role = "client" | "prestataire" | "admin";
 
@@ -191,11 +199,9 @@ function demandeGeoLabel(demande: Demande): string {
 
 function clientAvailabilityLabel(demande: Demande): string {
   const mode = (demande.client_availability_mode || "flexible").toLowerCase();
-  if (mode === "flexible") {
-    return "Disponibilite client: Flexible";
-  }
   const note = (demande.client_availability_note || "").trim();
-  return note ? `Disponibilite client: ${note}` : "Disponibilite client: Planning fixe";
+  const modeLabel = AVAILABILITY_LABELS[mode] ?? (note || AVAILABILITY_LABELS.fixe);
+  return note && mode !== "flexible" ? `Disponibilité client : ${note}` : `Disponibilité client : ${modeLabel}`;
 }
 
 const AVATAR_CROP_VIEW_SIZE = 320;
@@ -289,6 +295,7 @@ const API_BASE = "http://localhost:8000/api/v1";
 const TOKEN_KEY = "sm_token";
 const DEMANDE_DRAFT_KEY = "sm_last_demande_draft";
 const HIDDEN_ADMIN_PATH = "/_staff/console";
+const TOKEN_REFRESH_SKEW_SECONDS = 90;
 
 function decodeJwt(jwtToken: string): JwtClaims | null {
   if (!jwtToken || jwtToken.split(".").length !== 3) {
@@ -302,6 +309,16 @@ function decodeJwt(jwtToken: string): JwtClaims | null {
   } catch {
     return null;
   }
+}
+
+function isTokenExpired(claims?: JwtClaims | null, nowEpochSeconds = Date.now() / 1000): boolean {
+  if (!claims?.exp) return false;
+  return claims.exp <= nowEpochSeconds;
+}
+
+function shouldActualiserToken(claims?: JwtClaims | null, nowEpochSeconds = Date.now() / 1000): boolean {
+  if (!claims?.exp) return false;
+  return claims.exp - nowEpochSeconds <= TOKEN_REFRESH_SKEW_SECONDS;
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -411,17 +428,7 @@ function demandeStatusTone(status: string): "green" | "blue" | "orange" | "gray"
 }
 
 function demandeStatusLabel(status: string): string {
-  if (status === "ouverte") return "Ouverte";
-  if (status === "attribuee") return "Attribuée";
-  if (status === "annulee") return "Annulée";
-  if (status === "expiree") return "Expirée";
-  if (status === "en_attente") return "En attente";
-  if (status === "acceptee") return "Acceptée";
-  if (status === "confirmee") return "Confirmée";
-  if (status === "en_cours") return "En cours";
-  if (status === "terminee") return "Terminée";
-  if (status === "litige") return "Litige";
-  return status;
+  return STATUS_LABELS[status] ?? status;
 }
 
 function statusChipClass(status: string): string {
@@ -436,30 +443,17 @@ function statusChipClass(status: string): string {
 }
 
 function formatStatusLabel(status?: string | null): string {
-  if (!status) {
-    return "statut inconnu";
-  }
-  return status.replace(/_/g, " ");
+  if (!status) return "statut inconnu";
+  return STATUS_LABELS[status] ?? status.replace(/_/g, " ");
 }
 
 function demandeEventText(event: DemandeEvent): string {
-  if (event.event_type === "cree") {
-    return "Demande creee";
-  }
-  if (event.event_type === "attribuee") {
-    return "Demande attribuee";
-  }
-  if (event.event_type === "en_cours") {
-    return "Mission en cours";
-  }
-  if (event.event_type === "terminee") {
-    return "Mission terminee";
-  }
+  if (EVENT_TEXT[event.event_type]) return EVENT_TEXT[event.event_type];
   if (event.previous_status && event.new_status) {
-    return `Transition: ${formatStatusLabel(event.previous_status)} -> ${formatStatusLabel(event.new_status)}`;
+    return `Transition : ${formatStatusLabel(event.previous_status)} → ${formatStatusLabel(event.new_status)}`;
   }
   if (event.new_status) {
-    return `Statut: ${formatStatusLabel(event.new_status)}`;
+    return `Statut : ${formatStatusLabel(event.new_status)}`;
   }
   return formatStatusLabel(event.event_type);
 }
@@ -473,19 +467,19 @@ function demandeEventStepBadge(event: DemandeEvent): DemandeStepBadge | null {
   const step = (event.new_status || event.event_type || "").toLowerCase();
 
   if (step === "cree" || step === "ouverte" || step === "publiee") {
-    return { key: "publiee", label: "Publiee" };
+    return { key: "publiee", label: STEP_LABELS.publiee };
   }
   if (step === "attribuee" || step === "acceptee" || step === "confirmee") {
-    return { key: "attribuee", label: "Attribuee" };
+    return { key: "attribuee", label: STEP_LABELS.attribuee };
   }
   if (step === "en_cours") {
-    return { key: "en_cours", label: "En cours" };
+    return { key: "en_cours", label: STEP_LABELS.en_cours };
   }
   if (step === "terminee") {
-    return { key: "terminee", label: "Terminee" };
+    return { key: "terminee", label: STEP_LABELS.terminee };
   }
   if (step === "notee") {
-    return { key: "notee", label: "Notee" };
+    return { key: "notee", label: STEP_LABELS.notee };
   }
 
   return null;
@@ -498,19 +492,15 @@ function demandeEventActor(event: DemandeEvent): string {
   if (event.actor_user_id) {
     return `Utilisateur #${event.actor_user_id}`;
   }
-  return "Systeme";
+  return "Système";
 }
 
 function priorityLabel(priority: string): string {
-  if (priority === "haute") return "URGENT";
-  if (priority === "basse") return "Basse";
-  return "Normale";
+  return PRIORITY_LABELS[priority] ?? "Normale";
 }
 
 function priorityClass(priority: string): string {
-  if (priority === "haute") return "priority-badge priority-haute";
-  if (priority === "basse") return "priority-badge priority-basse";
-  return "priority-badge priority-normale";
+  return PRIORITY_CLASSES[priority] ?? "priority-badge priority-normale";
 }
 
 function groupEventsByDay(events: DemandeEvent[]): { day: string; events: DemandeEvent[] }[] {
@@ -545,8 +535,8 @@ function demandeProgressIndex(status: string): number {
 function demandeProgressSteps(status: string): Array<{ key: string; label: string; done: boolean; active: boolean }> {
   const index = demandeProgressIndex(status);
   const raw = [
-    { key: "ouverte", label: "Creee" },
-    { key: "attribuee", label: "Acceptee" },
+    { key: "ouverte", label: "Créée" },
+    { key: "attribuee", label: "Acceptée" },
     { key: "en_cours", label: "En cours" },
     { key: "terminee", label: "Terminee" },
   ];
@@ -560,23 +550,23 @@ function demandeProgressSteps(status: string): Array<{ key: string; label: strin
 
 function formatResponseDelay(value?: number | null): string {
   if (value == null) {
-    return "Reponse: indisponible";
+    return "Réponse : indisponible";
   }
   if (value < 60) {
-    return `Reponse moyenne: ${value} min`;
+    return `Réponse moyenne : ${value} min`;
   }
   const hours = Math.floor(value / 60);
   const minutes = value % 60;
   if (minutes === 0) {
-    return `Reponse moyenne: ${hours} h`;
+    return `Réponse moyenne : ${hours} h`;
   }
-  return `Reponse moyenne: ${hours} h ${minutes} min`;
+  return `Réponse moyenne : ${hours} h ${minutes} min`;
 }
 
 function etaReliabilityLabel(value: number): string {
-  if (value >= 85) return `ETA fiable: ${value}%`;
-  if (value >= 60) return `ETA assez fiable: ${value}%`;
-  return `ETA a confirmer: ${value}%`;
+  if (value >= 85) return `ETA fiable : ${value}%`;
+  if (value >= 60) return `ETA assez fiable : ${value}%`;
+  return `ETA à confirmer : ${value}%`;
 }
 
 function trustBadgeTone(value: number): string {
@@ -586,9 +576,9 @@ function trustBadgeTone(value: number): string {
 }
 
 function badgeLabel(slug: string): string {
-  if (slug === "mission-5") return "Rising Pro (5 missions)";
-  if (slug === "mission-10") return "Trusted Pro (10 missions)";
-  if (slug === "mission-20") return "Elite Pro (20 missions)";
+  if (slug === "mission-5") return "Pro en progression (5 missions)";
+  if (slug === "mission-10") return "Pro de confiance (10 missions)";
+  if (slug === "mission-20") return "Pro élite (20 missions)";
   return slug;
 }
 
@@ -611,8 +601,8 @@ function renderPrestataireTrust(summary?: PrestataireMissionSummary | null): JSX
         <span className="provider-trust-rating">Note {trust.rating.toFixed(1)}/5</span>
       </div>
       <div className="provider-trust-badges">
-        {trust.verified ? <span className="trust-badge trust-badge--verified">Verifie</span> : null}
-        <span className="trust-badge">{trust.completed_missions} missions terminees</span>
+        {trust.verified ? <span className="trust-badge trust-badge--verified">Vérifié</span> : null}
+        <span className="trust-badge">{trust.completed_missions} missions terminées</span>
         <span className="trust-badge">{formatResponseDelay(trust.average_response_minutes)}</span>
         <span className={trustBadgeTone(trust.eta_reliability_percent)}>{etaReliabilityLabel(trust.eta_reliability_percent)}</span>
       </div>
@@ -695,6 +685,36 @@ function AppShell(): JSX.Element {
   const [clientLoyalty, setClientLoyalty] = useState<LoyaltyStats | null>(null);
   const [userBadges, setUserBadges] = useState<BadgeRecord[]>([]);
   const [adminAtRisk, setAdminAtRisk] = useState<AtRiskResponse | null>(null);
+  const [adminRoleDraftByUserId, setAdminRoleDraftByUserId] = useState<Record<number, Role>>({});
+  const [adminActionUserId, setAdminActionUserId] = useState<number | null>(null);
+  const [adminActionKind, setAdminActionKind] = useState<"role" | "delete" | null>(null);
+  const tokenActualiserPendingRef = useRef(false);
+
+  async function refreshSessionToken(currentToken: string): Promise<boolean> {
+    if (tokenActualiserPendingRef.current) {
+      return false;
+    }
+    tokenActualiserPendingRef.current = true;
+    try {
+      const result = await apiFetch<LoginResponse>("/auth/refresh", {
+        method: "POST",
+        headers: authHeaders(currentToken),
+      });
+      const refreshedClaims = decodeJwt(result.access_token);
+      if (!refreshedClaims?.role) {
+        throw new Error("Token de session invalide");
+      }
+      setToken(result.access_token);
+      return true;
+    } catch {
+      setToast({ kind: "err", message: "Session expirée, veuillez vous reconnecter." });
+      setToken("");
+      setClaims(null);
+      return false;
+    } finally {
+      tokenActualiserPendingRef.current = false;
+    }
+  }
 
   useEffect(() => {
     if (!toast) {
@@ -727,9 +747,51 @@ function AppShell(): JSX.Element {
       return;
     }
 
+    if (isTokenExpired(nextClaims)) {
+      setToast({ kind: "err", message: "Session expirée, veuillez vous reconnecter." });
+      window.localStorage.removeItem(TOKEN_KEY);
+      setToken("");
+      setClaims(null);
+      navigate("/", { replace: true });
+      return;
+    }
+
     window.localStorage.setItem(TOKEN_KEY, token);
     void refreshDashboard(nextClaims, token);
   }, [token]);
+
+  useEffect(() => {
+    if (!token || !claims || !claims.exp) {
+      return undefined;
+    }
+
+    const maybeActualiser = async () => {
+      const currentClaims = decodeJwt(token);
+      if (!currentClaims) {
+        setToken("");
+        return;
+      }
+
+      if (isTokenExpired(currentClaims)) {
+        setToast({ kind: "err", message: "Session expirée, veuillez vous reconnecter." });
+        setToken("");
+        return;
+      }
+
+      if (shouldActualiserToken(currentClaims)) {
+        await refreshSessionToken(token);
+      }
+    };
+
+    void maybeActualiser();
+    const intervalId = window.setInterval(() => {
+      void maybeActualiser();
+    }, 30_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [token, claims]);
 
   async function fetchUserProfile(nextToken: string): Promise<void> {
     try {
@@ -820,7 +882,7 @@ function AppShell(): JSX.Element {
     } catch (error) {
       setToken("");
       setClaims(null);
-      setToast({ kind: "err", message: error instanceof Error ? error.message : "Session expired" });
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Session expirée" });
     } finally {
       setDashboardPending(false);
     }
@@ -852,17 +914,17 @@ function AppShell(): JSX.Element {
 
       const nextClaims = decodeJwt(result.access_token);
       if (!nextClaims?.role) {
-        throw new Error("Unable to read role from token");
+        throw new Error("Impossible de lire le role depuis le token");
       }
       if (expectedRole && nextClaims.role !== expectedRole) {
-        throw new Error("This account is not allowed on this access page");
+        throw new Error("Ce compte n'est pas autorise sur cet espace");
       }
 
       form.reset();
       setToken(result.access_token);
-      setToast({ kind: "ok", message: "Login successful" });
+      setToast({ kind: "ok", message: "Connexion reussie" });
     } catch (error) {
-      setToast({ kind: "err", message: error instanceof Error ? error.message : "Login failed" });
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Connexion impossible" });
     } finally {
       setLoginPending(false);
     }
@@ -1155,7 +1217,7 @@ function AppShell(): JSX.Element {
         kind: "err",
         message: userFacingError(
           error,
-          "Le service est enregistre, mais l'actualisation de l'ecran a echoue. Cliquez sur Refresh.",
+          "Le service est enregistre, mais l'actualisation de l'ecran a echoue. Cliquez sur Actualiser.",
           "create-service"
         ),
       });
@@ -1200,6 +1262,63 @@ function AppShell(): JSX.Element {
       }
     } catch (error) {
       setToast({ kind: "err", message: error instanceof Error ? error.message : "Mise a jour impossible" });
+    }
+  }
+
+  async function handleAdminChangeUserRole(user: UserRecord, nextRole: Role) {
+    if (!token) {
+      return;
+    }
+    if (user.role === nextRole) {
+      setToast({ kind: "err", message: "Aucun changement de role detecte." });
+      return;
+    }
+
+    try {
+      setAdminActionUserId(user.id);
+      setAdminActionKind("role");
+      await apiFetch<{ detail: string }>(`/auth/admin/users/${user.id}/role`, {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({ role: nextRole }),
+      });
+      setToast({ kind: "ok", message: `Role de @${user.username} mis a jour vers ${nextRole}.` });
+      if (claims) {
+        await refreshDashboard(claims, token);
+      }
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Mise a jour du role impossible" });
+    } finally {
+      setAdminActionUserId(null);
+      setAdminActionKind(null);
+    }
+  }
+
+  async function handleAdminDeleteUser(user: UserRecord) {
+    if (!token) {
+      return;
+    }
+    const confirmed = window.confirm(`Supprimer le compte @${user.username} ? Cette action est irreversible.`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setAdminActionUserId(user.id);
+      setAdminActionKind("delete");
+      await apiFetch<{ detail: string }>(`/auth/admin/users/${user.id}`, {
+        method: "DELETE",
+        headers: authHeaders(token),
+      });
+      setToast({ kind: "ok", message: `Compte @${user.username} supprime.` });
+      if (claims) {
+        await refreshDashboard(claims, token);
+      }
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Suppression impossible" });
+    } finally {
+      setAdminActionUserId(null);
+      setAdminActionKind(null);
     }
   }
 
@@ -1666,13 +1785,13 @@ function AppShell(): JSX.Element {
           </div>
           <div className="meta">
             <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
-              Refresh
+              Actualiser
             </button>
             <button type="button" className="ghost" onClick={() => void handleUnregister()}>
               Desinscription
             </button>
             <button type="button" className="ghost" onClick={logout}>
-              Logout
+              Se deconnecter
             </button>
           </div>
         </div>
@@ -2195,13 +2314,13 @@ function AppShell(): JSX.Element {
           </div>
           <div className="meta">
             <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
-              Refresh
+              Actualiser
             </button>
             <button type="button" className="ghost" onClick={() => void handleUnregister()}>
               Desinscription
             </button>
             <button type="button" className="ghost" onClick={logout}>
-              Logout
+              Se deconnecter
             </button>
           </div>
         </div>
@@ -2588,6 +2707,9 @@ function AppShell(): JSX.Element {
 
   function renderAdminWorkspace(): JSX.Element {
     const providerUsers = users.filter((user) => user.role === "prestataire");
+    const managedUsers = users
+      .slice()
+      .sort((a, b) => a.role.localeCompare(b.role) || a.id - b.id);
     const providerRows = providerUsers.map((user) => ({
       user,
       provider: prestataires.find((item) => item.user_id === user.id) || null,
@@ -2607,10 +2729,10 @@ function AppShell(): JSX.Element {
           </div>
           <div className="meta">
             <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
-              Refresh
+              Actualiser
             </button>
             <button type="button" className="ghost" onClick={logout}>
-              Logout
+              Se deconnecter
             </button>
           </div>
         </div>
@@ -2654,8 +2776,8 @@ function AppShell(): JSX.Element {
         ) : null}
 
         <div className="quick-actions">
-          <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>Refresh</button>
-          <button type="button" className="ghost" onClick={logout}>Logout</button>
+          <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>Actualiser</button>
+          <button type="button" className="ghost" onClick={logout}>Se deconnecter</button>
         </div>
 
         <section className="card recommendation-card admin-reco">
@@ -2775,6 +2897,80 @@ function AppShell(): JSX.Element {
             ))}
           </ul>
         </section>
+
+        <section className="card stack">
+          <div className="section-head">
+            <h3>Gestion des comptes et roles</h3>
+            <span>{dashboardPending ? "Mise a jour..." : `${managedUsers.length} comptes`}</span>
+          </div>
+          <ul className="list clean-list">
+            {dashboardPending ? renderSkeletonList("admin-accounts") : null}
+            {!dashboardPending && managedUsers.length === 0 ? <li>Aucun compte utilisateur.</li> : null}
+            {!dashboardPending && managedUsers.map((user) => {
+              const isSelf = user.id === currentUserId();
+              const draftRole = adminRoleDraftByUserId[user.id] ?? user.role;
+              const roleChanged = draftRole !== user.role;
+              const isPendingRow = adminActionUserId === user.id;
+              const roleStatusId = `admin-user-role-current-${user.id}`;
+              const roleHelpId = `admin-user-role-help-${user.id}`;
+              const selfProtectedId = `admin-user-self-protected-${user.id}`;
+
+              return (
+                <li key={`admin-user-${user.id}`} className="admin-provider-row admin-account-row">
+                  <div className="admin-provider-copy">
+                    <strong>{user.first_name} {user.last_name}</strong>
+                    <div className="timeline-line">@{user.username} — {formatCameroonPhone(user.phone)}</div>
+                    <div className="timeline-line">{user.email}</div>
+                    <div id={roleStatusId} className="timeline-line">Role actuel: {user.role}</div>
+                  </div>
+                  <div className="admin-provider-actions admin-account-actions">
+                    <label className="admin-role-picker">
+                      <span id={roleHelpId} className="helper-line">Nouveau role</span>
+                      <select
+                        className="styled-select"
+                        value={draftRole}
+                        disabled={isPendingRow}
+                        aria-label={`Nouveau role pour ${user.username}`}
+                        aria-describedby={`${roleStatusId} ${roleHelpId}`}
+                        onChange={(event) =>
+                          setAdminRoleDraftByUserId((prev) => ({
+                            ...prev,
+                            [user.id]: event.target.value as Role,
+                          }))
+                        }
+                      >
+                        <option value="client">client</option>
+                        <option value="prestataire">prestataire</option>
+                        <option value="admin">admin</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="ghost inline-ghost"
+                      disabled={isPendingRow || !roleChanged || isSelf}
+                      aria-label={`Appliquer le role ${draftRole} pour ${user.username}`}
+                      aria-describedby={roleStatusId}
+                      onClick={() => void handleAdminChangeUserRole(user, draftRole)}
+                    >
+                      {isPendingRow && adminActionKind === "role" ? "Mise a jour..." : "Appliquer role"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost inline-ghost danger"
+                      disabled={isPendingRow || isSelf}
+                      aria-label={`Supprimer le compte ${user.username}`}
+                      aria-describedby={isSelf ? `${roleStatusId} ${selfProtectedId}` : roleStatusId}
+                      onClick={() => void handleAdminDeleteUser(user)}
+                    >
+                      {isPendingRow && adminActionKind === "delete" ? "Suppression..." : "Supprimer"}
+                    </button>
+                    {isSelf ? <span id={selfProtectedId} className="helper-line">Compte courant protege</span> : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       </section>
     );
   }
@@ -2857,7 +3053,7 @@ function AppShell(): JSX.Element {
                     <span className="status-pill">restricted</span>
                   </div>
                   <form className="card stack" onSubmit={(event) => void handleLogin(event, "admin")}>
-                    <h3>Admin login</h3>
+                    <h3>Connexion admin</h3>
                     <label>
                       <span>Phone</span>
                       <input type="text" name="phone" required />
@@ -2867,7 +3063,7 @@ function AppShell(): JSX.Element {
                       <input type="password" name="password" required />
                     </label>
                     <button type="submit" disabled={loginPending}>
-                      {loginPending ? "Signing in..." : "Enter admin console"}
+                      {loginPending ? "Connexion..." : "Acceder a la console admin"}
                     </button>
                   </form>
                 </section>
@@ -3191,4 +3387,5 @@ function AppShell(): JSX.Element {
 export default function App(): JSX.Element {
   return <AppShell />;
 }
+
 
