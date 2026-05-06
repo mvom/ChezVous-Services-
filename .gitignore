@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+.env.production
+.env.local
+*.env
+
+# Logs
+logs/
+*.log
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# pytest
+.pytest_cache/
+.cache/
+
+# Alembic (generated versions are committed; keep this minimal)
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes / data
+postgres_data/
+
+# Node / frontend build
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# JSCPD
+.jscpd-backend/
+.jscpd-frontend/
+
+# Misc
+*.bak
+*.tmp
