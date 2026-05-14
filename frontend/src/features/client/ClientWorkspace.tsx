@@ -69,30 +69,27 @@ type ClientDashboardViewModel = ReturnType<typeof useClientDashboardViewModel>;
 export default function ClientWorkspace({ vm }: { vm: ClientDashboardViewModel }): React.JSX.Element {
   const ctx = vm;
   const {
-    demandes, services, userId, claims,
+    demandes, userId, claims,
     userProfile, avatarInputRef, avatarUploadPending, handleAvatarChange,
     role, dashboardPending,
     clientStatusFilter, setClientStatusFilter, clientQuery, setClientQuery,
     clientCreateFormRef, newDemandeCategory, setNewDemandeCategory,
     newDemandeSubServices, setNewDemandeSubServices,
     handleCreateDemande, handleEditDemande, handleCancelDemande, handleDuplicateDemande,
-    refreshClientDashboard, refreshMatchingPreview,
-    demandeLabel, missionLabel, demandeLabelById,
-    clientLoyalty,
-    handleUnregister, logout,
+    refreshClientDashboard,
+    handleValidatePrestataire,
+    handleUnregister,
+    demandeLabel,
+    logout,
     switchableRoles, canSwitchRole, switchRolePending, addRolePending, handleSwitchRole, handleAddRole,
     clientDemandes,
     clientMissions,
     filteredDemandes,
     pendingDemandes,
     activeMissions,
-    highPriorityOpen,
-    completionRate,
-    nextScheduledMission,
-    latestOpenDemande,
-    matchingPreview,
-    matchingPreviewPending,
     topCandidates,
+    matchingPreviewPending,
+    latestOpenDemande,
   } = ctx;
 
   const lastDraftRaw = window.localStorage.getItem(DEMANDE_DRAFT_KEY);
@@ -103,6 +100,7 @@ export default function ClientWorkspace({ vm }: { vm: ClientDashboardViewModel }
     category?: string;
     client_availability_mode?: string;
     client_availability_note?: string;
+    requested_datetime?: string;
     priority?: string;
   };
   let lastDraft: LastDraftShape | null = null;
@@ -113,28 +111,6 @@ export default function ClientWorkspace({ vm }: { vm: ClientDashboardViewModel }
       window.localStorage.removeItem(DEMANDE_DRAFT_KEY);
     }
   }
-
-  const nextAction =
-    pendingDemandes > 0
-      ? {
-          title: "Suivre vos demandes ouvertes",
-          description: `${pendingDemandes} demande(s) en attente d'attribution.`,
-          cta: "Voir les demandes ouvertes",
-          onClick: () => setClientStatusFilter("ouverte"),
-        }
-      : activeMissions > 0
-        ? {
-            title: "Mission en cours",
-            description: `${activeMissions} mission(s) en cours. Vous pouvez suivre les mises a jour ci-dessous.`,
-            cta: "Voir l'historique des services",
-            onClick: () => window.scrollTo({ top: 680, behavior: "smooth" }),
-          }
-        : {
-            title: "Publier un nouveau besoin",
-            description: "Créez une nouvelle demande en quelques secondes.",
-            cta: "Créer une demande",
-            onClick: () => clientCreateFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
-          };
 
   return (
     <section className="panel dashboard-panel">
@@ -181,9 +157,6 @@ export default function ClientWorkspace({ vm }: { vm: ClientDashboardViewModel }
           <button type="button" className="ghost" onClick={() => void refreshClientDashboard()} disabled={dashboardPending}>
             Actualiser
           </button>
-          <button type="button" className="ghost" onClick={() => void handleUnregister()}>
-            Désinscription
-          </button>
           <button type="button" className="ghost" onClick={logout}>
             Se déconnecter
           </button>
@@ -199,146 +172,9 @@ export default function ClientWorkspace({ vm }: { vm: ClientDashboardViewModel }
               : `${pendingDemandes} demande(s) ouverte(s), ${activeMissions} mission(s) active(s).`}
           </p>
         </div>
-        <div className="role-hero__actions">
-          <button
-            type="button"
-            onClick={() => clientCreateFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
-            disabled={dashboardPending}
-          >
-            {dashboardPending ? "Patientez..." : "Nouvelle demande"}
-          </button>
-          <button type="button" className="ghost" onClick={() => setClientStatusFilter("ouverte")} disabled={dashboardPending}>
-            Mes demandes ouvertes
-          </button>
-        </div>
       </section>
 
-      <section className="card recommendation-card">
-        <div>
-          <h3>Prochaine action recommandée</h3>
-          <p>{nextAction.description}</p>
-        </div>
-        <button type="button" onClick={nextAction.onClick}>{nextAction.cta}</button>
-      </section>
-
-      <div className="quick-actions quick-actions-sticky">
-        <button type="button" className="ghost" onClick={() => setClientStatusFilter("ouverte")}>Demandes ouvertes</button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => clientCreateFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
-        >
-          Nouvelle demande
-        </button>
-      </div>
-
-      <section className="card stack today-overview-card">
-        <div className="section-head">
-          <h3>Vue d'ensemble en 5 secondes</h3>
-          <span>{dashboardPending ? "Mise à jour..." : "À jour"}</span>
-        </div>
-        <div className="today-overview-grid">
-          <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
-            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : (nextScheduledMission ? formatDateTime(nextScheduledMission.scheduled_at || undefined) : "Aucun ETA")}</strong>
-            <span>Prochaine intervention</span>
-          </div>
-          <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
-            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : pendingDemandes}</strong>
-            <span>Demandes ouvertes</span>
-          </div>
-          <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
-            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : highPriorityOpen}</strong>
-            <span>Demandes urgentes</span>
-          </div>
-          <div className={`today-overview-item ${dashboardPending ? "skeleton-card" : ""}`}>
-            <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : `${completionRate}%`}</strong>
-            <span>Taux de missions terminées</span>
-          </div>
-        </div>
-      </section>
-
-      <div className="two-col">
-        <section className="card stack matching-widget-card">
-          <div className="section-head">
-            <h3>Matching intelligent</h3>
-            <span>{matchingPreviewPending ? "Analyse..." : "Temps réel"}</span>
-          </div>
-          {!latestOpenDemande ? <p className="helper-line">Publiez une demande pour voir les prestataires compatibles.</p> : null}
-          {latestOpenDemande ? (
-            <div className="matching-widget-head">
-              <strong>{demandeLabel(latestOpenDemande)}</strong>
-              <button
-                type="button"
-                className="ghost inline-ghost"
-                onClick={() => void refreshMatchingPreview()}
-                disabled={matchingPreviewPending}
-              >
-                {matchingPreviewPending ? "Actualisation..." : "Actualiser"}
-              </button>
-            </div>
-          ) : null}
-          {latestOpenDemande && !matchingPreviewPending && matchingPreview ? (
-            <p className="helper-line">{matchingPreview.available_count} prestataire(s) compatible(s) détecté(s).</p>
-          ) : null}
-          <ul className="list clean-list compact-list matching-candidates-list">
-            {matchingPreviewPending ? <SkeletonList prefix="client-matching" count={2} /> : null}
-            {!matchingPreviewPending && latestOpenDemande && topCandidates.length === 0 ? <li>Aucun candidat pour le moment.</li> : null}
-            {!matchingPreviewPending && topCandidates.map((candidate) => (
-              <li key={`match-${candidate.user_id}`}>
-                <div className="matching-candidate-head">
-                  <strong>{candidate.display_name}</strong>
-                  <span className={scoreBarClass(candidate.score_total)}>{candidate.score_total}/100</span>
-                </div>
-                <div className="matching-candidate-meta">
-                  Zone {candidate.score_zone} | Note {candidate.score_rating} | Fiabilité {candidate.score_completion}
-                </div>
-                <div className="matching-candidate-meta">
-                  {candidate.distance_km != null ? `Distance estimée: ${candidate.distance_km.toFixed(1)} km` : "Distance: en cours d'estimation"}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="card stack loyalty-gauge-card">
-          <div className="section-head">
-            <h3>Fidélité client</h3>
-            <span>{clientLoyalty ? `${clientLoyalty.loyalty_points} pts` : "N/A"}</span>
-          </div>
-          <div className="loyalty-gauge-track">
-            <div
-              className="loyalty-gauge-fill"
-              style={{ width: `${Math.max(0, Math.min(100, clientLoyalty?.progress_percent || 0))}%` }}
-            />
-          </div>
-          <div className="loyalty-gauge-meta">
-            <strong>{clientLoyalty ? `${clientLoyalty.completed_missions_count} missions terminées` : "0 mission"}</strong>
-            <span>
-              {clientLoyalty
-                ? `Prochain palier: ${clientLoyalty.next_milestone} missions`
-                : "Terminez des missions pour débloquer vos récompenses."}
-            </span>
-          </div>
-        </section>
-      </div>
-
-      <div className="stats-grid">
-        <article className={`metric-card ${dashboardPending ? "skeleton-card" : ""}`}>
-          <span>Mes demandes</span>
-          <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : clientDemandes.length}</strong>
-        </article>
-        <article className={`metric-card ${dashboardPending ? "skeleton-card" : ""}`}>
-          <span>Services disponibles</span>
-          <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : services.length}</strong>
-        </article>
-        <article className={`metric-card wide ${dashboardPending ? "skeleton-card" : ""}`}>
-          <span>Historique des services</span>
-          <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--lg" /> : clientMissions.length}</strong>
-        </article>
-      </div>
-
-      <div className="two-col">
-        <section className="card stack">
+      <section className="card stack">
           <div className="section-head">
             <h3>Mes demandes</h3>
             <span>{dashboardPending ? "Chargement..." : "À jour"}</span>
@@ -449,41 +285,48 @@ export default function ClientWorkspace({ vm }: { vm: ClientDashboardViewModel }
               );
             })}
           </ul>
-        </section>
+      </section>
 
+      {latestOpenDemande && (topCandidates.length > 0 || matchingPreviewPending) ? (
         <section className="card stack">
           <div className="section-head">
-            <h3>Historique des services rendus</h3>
-            <span>{dashboardPending ? "Chargement..." : "À jour"}</span>
+            <h3>Meilleures correspondances</h3>
+            <span>{matchingPreviewPending ? "Recherche en cours..." : `${topCandidates.length} prestataire(s) suggéré(s)`}</span>
           </div>
-          <ul className="list clean-list">
-            {dashboardPending ? <SkeletonList prefix="client-history" /> : null}
-            {!dashboardPending && clientMissions.length === 0 ? <li>Aucun service rendu pour le moment.</li> : null}
-            {!dashboardPending && clientMissions.map((mission) => (
-              <li key={mission.id}>
-                <div className="status-line blue">
-                  <span className="status-dot" />
-                  <strong>{missionLabel(mission)}</strong>
-                  <span className={statusChipClass(mission.status)}>{demandeStatusLabel(mission.status)}</span>
-                </div>
-                {mission.scheduled_at ? (
-                  <div className="eta-line">
-                    <span className="eta-icon">📅</span>
-                    <span>Prevue le {formatDateTime(mission.scheduled_at)}</span>
+          {matchingPreviewPending ? (
+            <ul className="list clean-list"><SkeletonList prefix="matching" count={3} /></ul>
+          ) : (
+            <ul className="list clean-list">
+              {topCandidates.map((candidate) => (
+                <li key={candidate.user_id} className="provider-trust-card">
+                  <div className="provider-trust-head">
+                    <strong>{candidate.display_name}</strong>
+                    <span className="provider-trust-rating">Score {candidate.score_total}</span>
                   </div>
-                ) : null}
-                {mission.prestataire_summary ? <PrestataireTrustCard summary={mission.prestataire_summary} /> : null}
-                <div className="timeline-line">{demandeLabelById(mission.demande_id)} — {mission.prestataire_summary?.display_name || `Prestataire #${mission.prestataire_id}`}</div>
-                <div className="timeline-line">Création : {formatDateTime(mission.created_at)}</div>
-                <div className="timeline-line">Mise à jour : {formatDateTime(mission.updated_at)}</div>
-              </li>
-            ))}
-          </ul>
+                  <div className="provider-trust-badges">
+                    {candidate.trust.verified ? <span className="trust-badge trust-badge--verified">Vérifié</span> : null}
+                    <span className="trust-badge">Note {candidate.trust.rating.toFixed(1)}/5</span>
+                    <span className="trust-badge">{candidate.trust.completed_missions} missions</span>
+                    {candidate.distance_km != null ? (
+                      <span className="trust-badge">{candidate.distance_km.toFixed(1)} km</span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost inline-ghost"
+                    disabled={dashboardPending}
+                    onClick={() => void handleValidatePrestataire(latestOpenDemande.id, candidate.user_id)}
+                  >
+                    Valider ce prestataire
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
-      </div>
+      ) : null}
 
-      <div className="two-col">
-        <form className="card stack" onSubmit={(e) => void handleCreateDemande(e)} ref={clientCreateFormRef as React.RefObject<HTMLFormElement>}>
+      <form className="card stack" onSubmit={(e) => void handleCreateDemande(e)} ref={clientCreateFormRef as React.RefObject<HTMLFormElement>}>
           <div className="section-head">
             <h3>Créer une demande</h3>
             {lastDraft ? (
@@ -582,6 +425,15 @@ export default function ClientWorkspace({ vm }: { vm: ClientDashboardViewModel }
             />
           </label>
           <label>
+            <span>Date/heure souhaitée (optionnelle)</span>
+            <input
+              type="datetime-local"
+              name="requested_datetime"
+              defaultValue={lastDraft?.requested_datetime || ""}
+              min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+            />
+          </label>
+          <label>
             <span>Priorité</span>
             <CustomSelect
               name="priority"
@@ -594,13 +446,16 @@ export default function ClientWorkspace({ vm }: { vm: ClientDashboardViewModel }
             />
           </label>
           <button type="submit" disabled={dashboardPending}>{dashboardPending ? "Traitement..." : "Créer une demande"}</button>
-        </form>
+      </form>
 
-        <section className="card stack muted-card">
-          <h3>Coordination prestataire</h3>
-          <p>Utilisez votre fil de demandes pour contacter et coordonner avec les prestataires.</p>
-        </section>
-      </div>
+      <button
+        type="button"
+        className="ghost dashboard-unregister-fab"
+        onClick={() => handleUnregister()}
+        title="Supprimer définitivement mon compte"
+      >
+        Désinscription
+      </button>
     </section>
   );
 }

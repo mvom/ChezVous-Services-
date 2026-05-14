@@ -1,6 +1,7 @@
 // ── App-wide constants & service configuration ───────────────────────────────
 
-export const API_BASE = "http://localhost:8000/api/v1";
+const envApiBase = import.meta.env.VITE_API_BASE as string | undefined;
+export const API_BASE = (envApiBase && envApiBase.trim()) || "/api/v1";
 export const TOKEN_KEY = "sm_token";
 export const DEMANDE_DRAFT_KEY = "sm_last_demande_draft";
 export const THEME_PREF_KEY_PREFIX = "sm_theme_pref";

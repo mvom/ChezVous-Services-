@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
+import { setAuthToken } from "./utils";
 
 const routerFuture = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
 
@@ -100,6 +101,8 @@ describe("App role routing", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     window.localStorage.clear();
+    window.sessionStorage.clear();
+    setAuthToken(null);
     window.history.replaceState({}, "", "/");
     cleanup();
   });
@@ -299,7 +302,7 @@ describe("App role routing", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/api/v1/prestataires/34/verified",
+      "/api/v1/prestataires/34/verified",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({ verified: true }),
@@ -360,7 +363,7 @@ describe("App role routing", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/api/v1/prestataires/34/verified",
+      "/api/v1/prestataires/34/verified",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({ verified: false }),
@@ -534,7 +537,7 @@ describe("App role routing", () => {
     await waitForWorkspace("/espace/prestataire", "Espace Prestataire");
   });
 
-  it("shows client loyalty points", async () => {
+  it("loads client workspace even when loyalty data is returned", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method || "GET";
@@ -557,9 +560,7 @@ describe("App role routing", () => {
     renderApp();
 
     await waitForWorkspace("/espace/client", "Espace Client");
-    await waitFor(() => {
-      expect(screen.getByText(/500/)).toBeInTheDocument();
-    });
+    expect(screen.queryByText("Fidélité client")).not.toBeInTheDocument();
   });
 
   it("opens edit demande modal and interacts with it", async () => {

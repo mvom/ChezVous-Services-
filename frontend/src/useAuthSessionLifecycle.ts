@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { setAuthToken } from "./utils";
 import type { AuthRolesResponse, JwtClaims, Role, SessionResponse, ToastState } from "./types";
 
 type UseAuthSessionLifecycleDeps = {
@@ -48,11 +49,13 @@ export function useAuthSessionLifecycle({
     tokenRefreshPendingRef.current = true;
     try {
       const result = await apiFetch<SessionResponse>("/auth/refresh", { method: "POST" });
-      if (!result.role) {
+      const role = result.role ?? result.active_role;
+      if (!role) {
         throw new Error("Session invalide");
       }
+      setAuthToken(result.access_token ?? null);
       setClaims(sessionToClaims(result));
-      setAvailableRoles(normalizeAvailableRoles(result.available_roles, result.role));
+      setAvailableRoles(normalizeAvailableRoles(result.available_roles, role));
       return true;
     } catch {
       setToast({ kind: "err", message: "Session expirée, veuillez vous reconnecter." });
@@ -67,10 +70,12 @@ export function useAuthSessionLifecycle({
   useEffect(() => {
     apiFetch<SessionResponse>("/auth/refresh", { method: "POST" })
       .then((result) => {
-        if (!result.role) return;
+        const role = result.role ?? result.active_role;
+        if (!role) return;
+        setAuthToken(result.access_token ?? null);
         const nextClaims = sessionToClaims(result);
         setClaims(nextClaims);
-        setAvailableRoles(normalizeAvailableRoles(result.available_roles, result.role));
+        setAvailableRoles(normalizeAvailableRoles(result.available_roles, role));
         void refreshDashboard(nextClaims);
       })
       .catch(() => {

@@ -16,6 +16,13 @@ import type {
   ZoneNotification,
 } from "./types";
 
+function compareDemandesByRecencyDesc(a: Demande, b: Demande): number {
+  const left = Date.parse(a.created_at);
+  const right = Date.parse(b.created_at);
+  const timeDelta = (Number.isNaN(right) ? 0 : right) - (Number.isNaN(left) ? 0 : left);
+  return timeDelta !== 0 ? timeDelta : b.id - a.id;
+}
+
 type UseRefreshDashboardDeps = {
   apiFetch: <T>(path: string, options?: RequestInit) => Promise<T>;
   navigate: NavigateFunction;
@@ -107,7 +114,9 @@ export function useRefreshDashboard({
           apiFetch<AuthRolesResponse>("/auth/me/roles").catch(() => null),
         ]);
 
-        setDemandes(nextDemandes);
+        const sortedDemandes = [...nextDemandes].sort(compareDemandesByRecencyDesc);
+
+        setDemandes(sortedDemandes);
         setServices(nextServices);
         setMissions(nextMissions);
         setUsers(nextUsers);
@@ -140,9 +149,9 @@ export function useRefreshDashboard({
         setAvailableRoles(normalizeAvailableRoles(rolesPayload?.available_roles, nextClaims.role));
 
         if (nextClaims.role === "client") {
-          const ownOpenDemandes = nextDemandes
+          const ownOpenDemandes = sortedDemandes
             .filter((d) => d.client_id === Number(nextClaims.sub) && d.status === "ouverte")
-            .sort((a, b) => b.id - a.id);
+            .sort(compareDemandesByRecencyDesc);
           const recentOpenDemande = ownOpenDemandes[0];
           if (recentOpenDemande) {
             void loadClientMatchingPreview(recentOpenDemande.id);

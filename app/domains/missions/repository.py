@@ -8,6 +8,7 @@ from app.db.models import Client, Demande, Mission, Prestataire, User
 
 class MissionsRepository(Protocol):
     def get_mission(self, mission_id: int) -> Mission | None: ...
+    def get_mission_by_demande_id(self, demande_id: int) -> Mission | None: ...
     def get_demande(self, demande_id: int) -> Demande | None: ...
     def get_client(self, client_id: int) -> Client | None: ...
     def get_prestataire(self, prestataire_id: int) -> Prestataire | None: ...
@@ -28,6 +29,9 @@ class SqlAlchemyMissionsRepository:
 
     def get_mission(self, mission_id: int) -> Mission | None:
         return self._db.get(Mission, mission_id)
+
+    def get_mission_by_demande_id(self, demande_id: int) -> Mission | None:
+        return self._db.scalar(select(Mission).where(Mission.demande_id == demande_id))
 
     def get_demande(self, demande_id: int) -> Demande | None:
         return self._db.get(Demande, demande_id)

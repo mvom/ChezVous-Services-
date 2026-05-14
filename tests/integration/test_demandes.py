@@ -1,4 +1,6 @@
 """Tests d'intégration pour les routes demandes."""
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from tests.conftest import login_user, register_user
 
@@ -152,6 +154,16 @@ def test_demande_with_availability_mode_fixe(client):
     assert resp.status_code == 201
     data = resp.json()
     assert data["client_availability_mode"] == "fixe"
+
+
+@pytest.mark.integration
+def test_demande_rejects_requested_datetime_in_the_past(client):
+    u, token = _setup_client(client)
+    past_iso = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    resp = _create_demande(client, token, u["id"], {"requested_datetime": past_iso})
+    assert resp.status_code == 422
+    detail = resp.json().get("detail")
+    assert detail
 
 
 @pytest.mark.integration

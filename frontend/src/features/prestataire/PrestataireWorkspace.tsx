@@ -27,6 +27,12 @@ const ALL_CATEGORIES: DemandeCategory[] = [
   "soudure", "evenementiel", "reparation_electronique", "climatisation",
 ];
 
+function formatOpportunitiesBadge(count: number): string {
+  if (count === 0) return "";
+  if (count >= 10) return "+9";
+  return String(count);
+}
+
 function SkeletonList({ prefix, count = 3 }: { prefix: string; count?: number }) {
   return (
     <>
@@ -38,6 +44,80 @@ function SkeletonList({ prefix, count = 3 }: { prefix: string; count?: number })
         </li>
       ))}
     </>
+  );
+}
+
+function DomainMultiSelect({
+  label,
+  selected,
+  onToggle,
+  disabled = false,
+  placeholder,
+  hiddenInputName,
+}: {
+  label: string;
+  selected: DemandeCategory[];
+  onToggle: (category: DemandeCategory) => void;
+  disabled?: boolean;
+  placeholder: string;
+  hiddenInputName?: string;
+}): React.JSX.Element {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function onDocumentMouseDown(event: MouseEvent): void {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocumentMouseDown);
+    return () => document.removeEventListener("mousedown", onDocumentMouseDown);
+  }, [open]);
+
+  const summary =
+    selected.length === 0
+      ? placeholder
+      : selected.map((category) => demandeCategoryLabel(category)).join(", ");
+
+  return (
+    <div className={`domain-multiselect ${open ? "domain-multiselect--open" : ""}`} ref={rootRef}>
+      <label className="domain-multiselect__label">{label}</label>
+      <button
+        type="button"
+        className="domain-multiselect__trigger"
+        onClick={() => setOpen((prev) => !prev)}
+        disabled={disabled}
+        aria-expanded={open}
+        title={summary}
+      >
+        <span className="domain-multiselect__summary">{summary}</span>
+        <span className="domain-multiselect__chevron">▾</span>
+      </button>
+      {hiddenInputName ? selected.map((category) => (
+        <input key={`hidden-${hiddenInputName}-${category}`} type="hidden" name={hiddenInputName} value={category} />
+      )) : null}
+      {open ? (
+        <div className="domain-multiselect__menu" role="listbox" aria-label={label}>
+          {ALL_CATEGORIES.map((category) => {
+            const active = selected.includes(category);
+            return (
+              <button
+                key={`option-${label}-${category}`}
+                type="button"
+                className={`domain-multiselect__option ${active ? "domain-multiselect__option--active" : ""}`}
+                onClick={() => onToggle(category)}
+                disabled={disabled}
+              >
+                <span>{demandeCategoryLabel(category)}</span>
+                <span>{active ? "✓" : ""}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -59,6 +139,8 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
     pipelineCardFilter, setPipelineCardFilter,
     pipelineIdQuery, setPipelineIdQuery,
     missionPendingId,
+    dismissedOpportunityIds,
+    consultedOpportunityIds,
     prestataireCreateServiceRef,
     visibilityMode, visibilityPending, handleVisibilityChange,
     zonePrefVille, setZonePrefVille,
@@ -66,12 +148,39 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
     zonePrefQuartier, setZonePrefQuartier,
     zonePrefPending, handleZonePreferenceChange,
     zoneNotifications, notifsPanelOpen, setNotifsPanelOpen, handleMarkAllNotifsRead,
+    handleDismissOpportunity, clearDismissedOpportunities,
     handleCreateService, handleUpdateMissionStatus,
-    handleUnregister, logout,
+    markOpportunityConsulted,
+    handleUnregister,
+    logout,
     openDemandDetailModal,
     demandeLabel, missionLabel, demandeLabelById,
     switchableRoles, canSwitchRole, switchRolePending, addRolePending, handleSwitchRole, handleAddRole,
   } = ctx;
+
+  const hiddenOpportunityIds = dismissedOpportunityIds || [];
+  const [zonePrefDomains, setZonePrefDomains] = React.useState<DemandeCategory[]>(() => {
+    const raw = window.localStorage.getItem(`provider-zone-domains-${userId}`);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as DemandeCategory[];
+      return Array.isArray(parsed) ? parsed.filter((item) => ALL_CATEGORIES.includes(item)) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [createServiceDomains, setCreateServiceDomains] = React.useState<DemandeCategory[]>([]);
+  const [pipelineOpenBySection, setPipelineOpenBySection] = React.useState<Record<"new" | "pending" | "active" | "closing", boolean>>({
+    new: true,
+    pending: true,
+    active: true,
+    closing: false,
+  });
+  const pipelineSectionRef = React.useRef<HTMLSectionElement | null>(null);
+
+  React.useEffect(() => {
+    window.localStorage.setItem(`provider-zone-domains-${userId}`, JSON.stringify(zonePrefDomains));
+  }, [userId, zonePrefDomains]);
 
   const ownServices = services.filter((s) => s.prestataire_id === userId);
   const providerMissions = missions.filter((m) => m.prestataire_id === userId);
@@ -106,17 +215,19 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
   const allQuartiers = Array.from(new Set(demandesByArrondissement.map((d) => cleanGeo(d.quartier)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
   const matchingDemandes = demandes.filter((d) => {
+    if (hiddenOpportunityIds.includes(d.id)) return false;
     const matchesStatus = prestataireStatusFilter === "all" || d.status === prestataireStatusFilter;
     const matchesCategory = prestataireCategoryFilter === "all" || (d.category || "menage") === prestataireCategoryFilter;
     const matchesVille = prestataireVilleFilter === "all" || cleanGeo(d.ville) === prestataireVilleFilter;
     const matchesArrondissement =
       prestataireArrondissementFilter === "all" || cleanGeo(d.arrondissement) === prestataireArrondissementFilter;
     const matchesQuartier = prestataireQuartierFilter === "all" || cleanGeo(d.quartier) === prestataireQuartierFilter;
-    return matchesStatus && matchesCategory && matchesVille && matchesArrondissement && matchesQuartier;
+    const matchesZoneDomains = zonePrefDomains.length === 0 || zonePrefDomains.includes(d.category || "menage");
+    return matchesStatus && matchesCategory && matchesVille && matchesArrondissement && matchesQuartier && matchesZoneDomains;
   });
 
-  const topOpportunities = matchingDemandes.slice(0, 3);
   const newOpportunities = matchingDemandes.filter((d) => d.status === "ouverte");
+  const unreadOpportunitiesCount = newOpportunities.filter((d) => !(consultedOpportunityIds || []).includes(d.id)).length;
   const confirmMissions = providerMissions.filter((m) => missionPipelineStatus(m.status) === "pending");
   const activeMissionsCol = providerMissions.filter((m) => missionPipelineStatus(m.status) === "active");
   const closingMissions = providerMissions.filter((m) => missionPipelineStatus(m.status) === "done");
@@ -153,10 +264,13 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
     return true;
   };
 
-  const shownOpportunities = newOpportunities.filter(keepOpportunity).slice(0, pipelineVisibleCount);
-  const shownConfirmMissions = confirmMissions.filter(keepMission).slice(0, pipelineVisibleCount);
-  const shownActiveMissions = activeMissionsCol.filter(keepMission).slice(0, pipelineVisibleCount);
-  const shownClosingMissions = closingMissions.filter(keepMission).slice(0, pipelineVisibleCount);
+  const limitPipelineCards = <T,>(cards: T[]): T[] =>
+    pipelineVisibleCount === "all" ? cards : cards.slice(0, pipelineVisibleCount);
+
+  const shownOpportunities = limitPipelineCards(newOpportunities.filter(keepOpportunity));
+  const shownConfirmMissions = limitPipelineCards(confirmMissions.filter(keepMission));
+  const shownActiveMissions = limitPipelineCards(activeMissionsCol.filter(keepMission));
+  const shownClosingMissions = limitPipelineCards(closingMissions.filter(keepMission));
   const pipelineCardCount =
     shownOpportunities.length + shownConfirmMissions.length + shownActiveMissions.length + shownClosingMissions.length;
 
@@ -180,6 +294,23 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
     setZonePrefVille("");
     setZonePrefArrondissement("");
     setZonePrefQuartier("");
+    setZonePrefDomains([]);
+  }
+
+  function handleToggleZoneDomain(category: DemandeCategory): void {
+    setZonePrefDomains((prev) =>
+      prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category]
+    );
+  }
+
+  function handleToggleCreateServiceDomain(category: DemandeCategory): void {
+    setCreateServiceDomains((prev) =>
+      prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category]
+    );
+  }
+
+  function handleTogglePipelineSection(section: "new" | "pending" | "active" | "closing"): void {
+    setPipelineOpenBySection((prev) => ({ ...prev, [section]: !prev[section] }));
   }
 
   function handleToggleNotifsPanel(): void {
@@ -278,13 +409,10 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
             onSwitchRole={(item) => void handleSwitchRole(item)}
             onAddRole={(item) => void handleAddRole(item)}
           />
-          <button type="button" className="ghost" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
+          <button type="button" className="dashboard-primary-btn" onClick={() => void refreshDashboard(claims!, token)} disabled={dashboardPending}>
             Actualiser
           </button>
-          <button type="button" className="ghost" onClick={() => void handleUnregister()}>
-            Désinscription
-          </button>
-          <button type="button" className="ghost" onClick={logout}>
+          <button type="button" className="dashboard-primary-btn" onClick={logout}>
             Se déconnecter
           </button>
         </div>
@@ -307,8 +435,20 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
           >
             {dashboardPending ? "Patientez..." : "Créer un service"}
           </button>
-          <button type="button" className="ghost" onClick={() => setPrestataireStatusFilter("ouverte")} disabled={dashboardPending}>
+          <button
+            type="button"
+            className="dashboard-primary-btn"
+            onClick={() => {
+              setPrestataireStatusFilter("ouverte");
+              pipelineSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            title="Voir vos opportunités"
+            disabled={dashboardPending}
+          >
             Voir opportunités
+            {newOpportunities.length > 0 ? (
+              <span className="opportunity-badge">{formatOpportunitiesBadge(unreadOpportunitiesCount)}</span>
+            ) : null}
           </button>
         </div>
       </section>
@@ -332,10 +472,13 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
         <div className="zone-pref-card__head">
           <div>
             <h3>Zone d'intervention préférée</h3>
-            <p className="helper-line">Vous serez notifié dès qu'une demande est publiée dans cette zone.</p>
+            <p className="helper-line">Définissez la zone et les domaines à suivre pour filtrer les demandes du pipeline.</p>
           </div>
-          {(zonePrefVille || zonePrefArrondissement || zonePrefQuartier) && (
-            <span className="zone-pref-badge">📍 {[zonePrefVille, zonePrefArrondissement, zonePrefQuartier].filter(Boolean).join(", ")}</span>
+          {(zonePrefVille || zonePrefArrondissement || zonePrefQuartier || zonePrefDomains.length > 0) && (
+            <span className="zone-pref-badge">
+              📍 {[zonePrefVille, zonePrefArrondissement, zonePrefQuartier].filter(Boolean).join(", ") || "Zone libre"}
+              {zonePrefDomains.length > 0 ? ` | Domaines: ${zonePrefDomains.map(demandeCategoryLabel).join(", ")}` : ""}
+            </span>
           )}
         </div>
         <form className="zone-pref-form" onSubmit={handleZonePrefSubmit}>
@@ -353,9 +496,16 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
               <input id="zpQuartier" type="text" placeholder="ex: Makepe (optionnel)" value={zonePrefQuartier} onChange={handleZonePrefQuartierChange} disabled={zonePrefPending} />
             </div>
           </div>
+          <DomainMultiSelect
+            label="Domaines d'intérêt"
+            selected={zonePrefDomains}
+            onToggle={handleToggleZoneDomain}
+            disabled={zonePrefPending}
+            placeholder="Choisir un ou plusieurs domaines"
+          />
           <div className="zone-pref-actions">
             <button type="submit" disabled={zonePrefPending}>{zonePrefPending ? "Enregistrement..." : "Enregistrer la zone"}</button>
-            {(zonePrefVille || zonePrefArrondissement || zonePrefQuartier) && (
+            {(zonePrefVille || zonePrefArrondissement || zonePrefQuartier || zonePrefDomains.length > 0) && (
               <button type="button" className="ghost" disabled={zonePrefPending} onClick={handleZonePrefClear}>
                 Effacer
               </button>
@@ -426,6 +576,9 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
       <div className="quick-actions">
         <button type="button" className="ghost" onClick={() => setPrestataireStatusFilter("ouverte")}>Demandes ouvertes</button>
         <button type="button" className="ghost" onClick={() => setPrestataireStatusFilter("all")}>Tout le marché</button>
+        {hiddenOpportunityIds.length > 0 ? (
+          <button type="button" className="ghost" onClick={clearDismissedOpportunities}>Réafficher opportunités masquées ({hiddenOpportunityIds.length})</button>
+        ) : null}
       </div>
 
       <div className="filter-row provider-filter-row">
@@ -470,18 +623,6 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
             <span>Taux d'acceptation</span>
           </div>
           <div className={`perf-kpi-item ${dashboardPending ? "skeleton-card" : ""}`}>
-            <strong>
-              {dashboardPending
-                ? <span className="skeleton-line skeleton-line--md" />
-                : (myTrust?.average_response_minutes != null
-                  ? myTrust.average_response_minutes < 60
-                    ? `${myTrust.average_response_minutes} min`
-                    : `${Math.floor(myTrust.average_response_minutes / 60)} h${myTrust.average_response_minutes % 60 > 0 ? ` ${myTrust.average_response_minutes % 60} min` : ""}`
-                  : "—")}
-            </strong>
-            <span>Temps de reponse</span>
-          </div>
-          <div className={`perf-kpi-item ${dashboardPending ? "skeleton-card" : ""}`}>
             <strong>{dashboardPending ? <span className="skeleton-line skeleton-line--md" /> : (noteClient !== null ? `${noteClient.toFixed(1)}/5` : "—")}</strong>
             <span>Note client</span>
           </div>
@@ -509,94 +650,54 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
         </ul>
       </section>
 
-      <div className="two-col">
-        <section className="card stack">
-          <div className="section-head">
-            <h3>Flux des demandes ouvertes</h3>
-            <span>{dashboardPending ? "Chargement..." : "À jour"}</span>
-          </div>
-          <div className="helper-line">Opportunités prioritaires (3 plus récentes)</div>
-          <ul className="list clean-list compact-list">
-            {dashboardPending ? <SkeletonList prefix="provider-opportunities" count={2} /> : null}
-            {!dashboardPending && topOpportunities.length === 0 ? <li>Aucune opportunite pour ce filtre.</li> : null}
-            {!dashboardPending && topOpportunities.map((demande) => (
-              <li key={`top-${demande.id}`} onClick={() => openDemandDetailModal(demande)} style={{ cursor: "pointer" }} title="Cliquez pour voir les details">
-                <div className={`status-line ${demandeStatusTone(demande.status)}`}>
-                  <span className="status-dot" />
-                  <strong>{demandeLabel(demande)}</strong>
-                  <span className="status-chip">{demandeCategoryLabel(demande.category)}</span>
-                  <span className={statusChipClass(demande.status)}>{demandeStatusLabel(demande.status)}</span>
-                </div>
-                <div>{demandeGeoLabel(demande)} - {demande.description}</div>
-                <div className="timeline-line">{clientAvailabilityLabel(demande)}</div>
-              </li>
-            ))}
-          </ul>
-          <ul className="list clean-list">
-            {dashboardPending ? <SkeletonList prefix="provider-feed" /> : null}
-            {!dashboardPending && matchingDemandes.length === 0 ? <li>Aucune demande pour le moment.</li> : null}
-            {!dashboardPending && matchingDemandes.map((demande) => (
-              <li key={demande.id} onClick={() => openDemandDetailModal(demande)} style={{ cursor: "pointer" }} title="Cliquez pour voir les details">
-                <div className={`status-line ${demandeStatusTone(demande.status)}`}>
-                  <span className="status-dot" />
-                  <strong>{demandeLabel(demande)}</strong>
-                  <span className="status-chip">{demandeCategoryLabel(demande.category)}</span>
-                  <span className={statusChipClass(demande.status)}>{demandeStatusLabel(demande.status)}</span>
-                </div>
-                <div>{demandeGeoLabel(demande)} - {demande.description}</div>
-                <div className="timeline-line">{clientAvailabilityLabel(demande)}</div>
-              </li>
-            ))}
-          </ul>
-        </section>
+      <section className="card stack">
+        <div className="section-head">
+          <h3>Mon catalogue de services</h3>
+          <span>{dashboardPending ? "Chargement..." : "À jour"}</span>
+        </div>
+        <ul className="list clean-list">
+          {dashboardPending ? <SkeletonList prefix="provider-services" /> : null}
+          {!dashboardPending && ownServices.length === 0 ? <li>Aucun service pour le moment.</li> : null}
+          {!dashboardPending && ownServices.map((service) => (
+            <li key={service.id}>
+              <strong>#{service.id}</strong> {service.name} - {formatServicePrice(service.price)}
+              <div className="timeline-line">Disponibilités : {service.availability_slots}</div>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-        <section className="card stack">
-          <div className="section-head">
-            <h3>Mon catalogue de services</h3>
-            <span>{dashboardPending ? "Chargement..." : "À jour"}</span>
-          </div>
-          <ul className="list clean-list">
-            {dashboardPending ? <SkeletonList prefix="provider-services" /> : null}
-            {!dashboardPending && ownServices.length === 0 ? <li>Aucun service pour le moment.</li> : null}
-            {!dashboardPending && ownServices.map((service) => (
-              <li key={service.id}>
-                <strong>#{service.id}</strong> {service.name} - {formatServicePrice(service.price)}
-                <div className="timeline-line">Disponibilités : {service.availability_slots}</div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
+      <form className="card stack" onSubmit={(e) => void handleCreateService(e)} ref={prestataireCreateServiceRef as React.RefObject<HTMLFormElement>}>
+        <h3>Créer un service</h3>
+        <DomainMultiSelect
+          label="Services proposés (au moins un)"
+          selected={createServiceDomains}
+          onToggle={handleToggleCreateServiceDomain}
+          disabled={dashboardPending}
+          placeholder="Choisir les services que vous rendez"
+          hiddenInputName="selected_categories"
+        />
+        <label>
+          <span>Description</span>
+          <textarea
+            name="description"
+            required
+            disabled={createServiceDomains.length === 0}
+            placeholder={createServiceDomains.length === 0 ? "Choisissez d'abord vos services" : "Décrivez votre offre"}
+          />
+        </label>
+        <label>
+          <span>Disponibilité (obligatoire)</span>
+          <textarea name="availability_slots" placeholder="Ex: Lun-Ven 08h-17h, Sam 09h-12h" minLength={3} required />
+        </label>
+        <label>
+          <span>Prix (optionnel)</span>
+          <input type="number" name="price" min="0" step="1" placeholder="Laissez vide pour: À discuter" />
+        </label>
+        <button type="submit" disabled={dashboardPending || createServiceDomains.length === 0}>{dashboardPending ? "Traitement..." : "Créer un service"}</button>
+      </form>
 
-      <div className="two-col">
-        <form className="card stack" onSubmit={(e) => void handleCreateService(e)} ref={prestataireCreateServiceRef as React.RefObject<HTMLFormElement>}>
-          <h3>Créer un service</h3>
-          <label>
-            <span>Nom</span>
-            <input type="text" name="name" required />
-          </label>
-          <label>
-            <span>Description</span>
-            <textarea name="description" required />
-          </label>
-          <label>
-            <span>Disponibilité (obligatoire)</span>
-            <textarea name="availability_slots" placeholder="Ex: Lun-Ven 08h-17h, Sam 09h-12h" minLength={3} required />
-          </label>
-          <label>
-            <span>Prix (optionnel)</span>
-            <input type="number" name="price" min="0" step="1" placeholder="Laissez vide pour: À discuter" />
-          </label>
-          <button type="submit" disabled={dashboardPending}>{dashboardPending ? "Traitement..." : "Créer un service"}</button>
-        </form>
-
-        <section className="card stack muted-card">
-          <h3>Préparation aux missions</h3>
-          <p>Gardez votre offre claire et votre tarif à jour pour améliorer la mise en relation.</p>
-        </section>
-      </div>
-
-      <section className="card stack pipeline-section">
+      <section className="card stack pipeline-section" ref={pipelineSectionRef}>
         <div className="section-head">
           <h3>Pipeline des missions</h3>
           <span>{dashboardPending ? "Loading..." : `${providerMissions.length} mission(s)`}</span>
@@ -606,8 +707,12 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
             <span>Affichage</span>
             <CustomSelect
               value={String(pipelineVisibleCount)}
-              onChange={(v) => setPipelineVisibleCount(Number(v) as 5 | 10)}
-              options={[{ value: "5", label: "5 cartes / colonne" }, { value: "10", label: "10 cartes / colonne" }]}
+              onChange={(v) => setPipelineVisibleCount(v === "all" ? "all" : (Number(v) as 5 | 10))}
+              options={[
+                { value: "5", label: "5 cartes / colonne" },
+                { value: "10", label: "10 cartes / colonne" },
+                { value: "all", label: "Toutes les cartes" },
+              ]}
             />
           </label>
           <label>
@@ -633,92 +738,145 @@ export default function PrestataireWorkspace({ vm }: { vm: PrestataireDashboardV
           <p className="helper-line">Aucune carte ne correspond au filtre selectionne.</p>
         ) : (
           <div className="pipeline-board">
-            <div className="pipeline-col pipeline-col--new">
-              <div className="pipeline-col__header">
-                <span className="pipeline-col__dot" />
-                <strong>Nouvelles opportunités</strong>
-                <span className="pipeline-count">{shownOpportunities.length}</span>
-              </div>
-              {shownOpportunities.map((demande) => (
-                <div key={`opp-${demande.id}`} className="pipeline-card pipeline-card--new" onClick={() => openDemandDetailModal(demande)} title="Voir les details">
-                  <div className="pipeline-card__title">{demandeLabel(demande)}</div>
-                  <div className="pipeline-card__meta">{demandeGeoLabel(demande)}</div>
-                  <div className="pipeline-card__meta">{demande.description.slice(0, 55)}{demande.description.length > 55 ? "…" : ""}</div>
-                  <span className={priorityClass(demande.priority)}>{priorityLabel(demande.priority)}</span>
+            <section className="pipeline-col pipeline-col--new">
+              <button type="button" className="pipeline-col__toggle" onClick={() => handleTogglePipelineSection("new")}>
+                <div className="pipeline-col__header">
+                  <span className="pipeline-col__dot" />
+                  <strong>Nouvelles opportunités</strong>
+                  <span className="pipeline-count">{shownOpportunities.length}</span>
                 </div>
-              ))}
-              {shownOpportunities.length === 0 ? <div className="pipeline-empty">Aucune opportunite</div> : null}
-            </div>
+                <span className="pipeline-col__chevron">{pipelineOpenBySection.new ? "▾" : "▸"}</span>
+              </button>
+              {pipelineOpenBySection.new ? (
+                <>
+                  {shownOpportunities.map((demande) => (
+                    <div key={`opp-${demande.id}`} className="pipeline-card pipeline-card--new" onClick={() => { markOpportunityConsulted(demande.id); openDemandDetailModal(demande); }} title="Voir les details">
+                      <span
+                        className={`pipeline-card__seen-indicator ${(consultedOpportunityIds || []).includes(demande.id) ? "is-seen" : "is-unseen"}`}
+                        aria-label={(consultedOpportunityIds || []).includes(demande.id) ? "Opportunité consultée" : "Opportunité non consultée"}
+                        title={(consultedOpportunityIds || []).includes(demande.id) ? "Opportunité déjà consultée" : "Opportunité non consultée"}
+                      >
+                        👁
+                      </span>
+                      <div className="pipeline-card__title">{demandeLabel(demande)}</div>
+                      <div className="pipeline-card__meta">{demandeGeoLabel(demande)}</div>
+                      <div className="pipeline-card__meta">{demande.description.slice(0, 55)}{demande.description.length > 55 ? "…" : ""}</div>
+                      <span className={priorityClass(demande.priority)}>{priorityLabel(demande.priority)}</span>
+                      <div className="pipeline-card__actions">
+                        <button type="button" className="pipeline-btn" onClick={(e) => { e.stopPropagation(); markOpportunityConsulted(demande.id); openDemandDetailModal(demande); }} title="Agrandir">🔍</button>
+                        <button type="button" className="pipeline-btn" onClick={(e) => { e.stopPropagation(); handleDismissOpportunity(demande.id); }} title="Supprimer du pipeline">🗑</button>
+                      </div>
+                    </div>
+                  ))}
+                  {shownOpportunities.length === 0 ? <div className="pipeline-empty">Aucune opportunite</div> : null}
+                </>
+              ) : null}
+            </section>
 
-            <div className="pipeline-col pipeline-col--pending">
-              <div className="pipeline-col__header">
-                <span className="pipeline-col__dot" />
-                <strong>À confirmer</strong>
-                <span className="pipeline-count">{shownConfirmMissions.length}</span>
-              </div>
-              {shownConfirmMissions.map((m) => (
-                <div key={m.id} className="pipeline-card">
-                  <div className="pipeline-card__title">{missionLabel(m)}</div>
-                  <div className="pipeline-card__meta">{demandeLabelById(m.demande_id)}</div>
-                  <div className="pipeline-card__meta">Depuis: {formatDateTime(m.created_at)}</div>
-                  {m.scheduled_at ? <div className="pipeline-card__eta">📅 {formatDateTime(m.scheduled_at)}</div> : null}
-                  <div className="pipeline-card__actions">
-                    <button type="button" className="pipeline-btn pipeline-btn--start" disabled={dashboardPending || missionPendingId === m.id} onClick={() => void handleUpdateMissionStatus(m.id, "en_cours")}>
-                      {missionPendingId === m.id ? "Traitement..." : "Démarrer"}
-                    </button>
-                  </div>
+            <section className="pipeline-col pipeline-col--pending">
+              <button type="button" className="pipeline-col__toggle" onClick={() => handleTogglePipelineSection("pending")}>
+                <div className="pipeline-col__header">
+                  <span className="pipeline-col__dot" />
+                  <strong>À confirmer</strong>
+                  <span className="pipeline-count">{shownConfirmMissions.length}</span>
                 </div>
-              ))}
-              {shownConfirmMissions.length === 0 ? <div className="pipeline-empty">Aucune mission</div> : null}
-            </div>
+                <span className="pipeline-col__chevron">{pipelineOpenBySection.pending ? "▾" : "▸"}</span>
+              </button>
+              {pipelineOpenBySection.pending ? (
+                <>
+                  {shownConfirmMissions.map((m) => (
+                    <div key={m.id} className="pipeline-card">
+                      <div className="pipeline-card__title">{missionLabel(m)}</div>
+                      <div className="pipeline-card__meta">{demandeLabelById(m.demande_id)}</div>
+                      <div className="pipeline-card__meta">Depuis: {formatDateTime(m.created_at)}</div>
+                      {m.scheduled_at ? <div className="pipeline-card__eta">📅 {formatDateTime(m.scheduled_at)}</div> : null}
+                      <div className="pipeline-card__actions">
+                        {m.status === "en_attente" ? (
+                          <>
+                            <button type="button" className="pipeline-btn pipeline-btn--start" disabled={dashboardPending || missionPendingId === m.id} onClick={() => void handleUpdateMissionStatus(m.id, "acceptee")}>
+                              {missionPendingId === m.id ? "Traitement..." : "Accepter"}
+                            </button>
+                            <button type="button" className="pipeline-btn pipeline-btn--danger" disabled={dashboardPending || missionPendingId === m.id} onClick={() => void handleUpdateMissionStatus(m.id, "annulee")}>
+                              Refuser
+                            </button>
+                          </>
+                        ) : (
+                          <button type="button" className="pipeline-btn pipeline-btn--start" disabled={dashboardPending || missionPendingId === m.id} onClick={() => void handleUpdateMissionStatus(m.id, "en_cours")}>
+                            {missionPendingId === m.id ? "Traitement..." : "Démarrer"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {shownConfirmMissions.length === 0 ? <div className="pipeline-empty">Aucune mission</div> : null}
+                </>
+              ) : null}
+            </section>
 
-            <div className="pipeline-col pipeline-col--active">
-              <div className="pipeline-col__header">
-                <span className="pipeline-col__dot" />
-                <strong>En cours</strong>
-                <span className="pipeline-count">{shownActiveMissions.length}</span>
-              </div>
-              {shownActiveMissions.map((m) => (
-                <div key={m.id} className="pipeline-card pipeline-card--active">
-                  <div className="pipeline-card__title">{missionLabel(m)}</div>
-                  <div className="pipeline-card__meta">{demandeLabelById(m.demande_id)}</div>
-                  <div className="pipeline-card__meta">Depuis: {formatDateTime(m.updated_at)}</div>
-                  {m.scheduled_at ? <div className="pipeline-card__eta">📅 {formatDateTime(m.scheduled_at)}</div> : null}
-                  <div className="pipeline-card__actions">
-                    <button type="button" className="pipeline-btn pipeline-btn--done" disabled={dashboardPending || missionPendingId === m.id} onClick={() => void handleUpdateMissionStatus(m.id, "terminee")}>
-                      {missionPendingId === m.id ? "Traitement..." : "Terminer"}
-                    </button>
-                  </div>
+            <section className="pipeline-col pipeline-col--active">
+              <button type="button" className="pipeline-col__toggle" onClick={() => handleTogglePipelineSection("active")}>
+                <div className="pipeline-col__header">
+                  <span className="pipeline-col__dot" />
+                  <strong>En cours</strong>
+                  <span className="pipeline-count">{shownActiveMissions.length}</span>
                 </div>
-              ))}
-              {shownActiveMissions.length === 0 ? <div className="pipeline-empty">Aucune mission</div> : null}
-            </div>
+                <span className="pipeline-col__chevron">{pipelineOpenBySection.active ? "▾" : "▸"}</span>
+              </button>
+              {pipelineOpenBySection.active ? (
+                <>
+                  {shownActiveMissions.map((m) => (
+                    <div key={m.id} className="pipeline-card pipeline-card--active">
+                      <div className="pipeline-card__title">{missionLabel(m)}</div>
+                      <div className="pipeline-card__meta">{demandeLabelById(m.demande_id)}</div>
+                      <div className="pipeline-card__meta">Depuis: {formatDateTime(m.updated_at)}</div>
+                      {m.scheduled_at ? <div className="pipeline-card__eta">📅 {formatDateTime(m.scheduled_at)}</div> : null}
+                      <div className="pipeline-card__actions">
+                        <button type="button" className="pipeline-btn pipeline-btn--done" disabled={dashboardPending || missionPendingId === m.id} onClick={() => void handleUpdateMissionStatus(m.id, "terminee")}>
+                          {missionPendingId === m.id ? "Traitement..." : "Terminer"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {shownActiveMissions.length === 0 ? <div className="pipeline-empty">Aucune mission</div> : null}
+                </>
+              ) : null}
+            </section>
 
-            <div className="pipeline-col pipeline-col--closing">
-              <div className="pipeline-col__header">
-                <span className="pipeline-col__dot" />
-                <strong>À clôturer</strong>
-                <span className="pipeline-count">{shownClosingMissions.length}</span>
-              </div>
-              {shownClosingMissions.map((m) => (
-                <div key={m.id} className="pipeline-card pipeline-card--closing">
-                  <div className="pipeline-card__title">{missionLabel(m)}</div>
-                  <div className="pipeline-card__meta">{demandeLabelById(m.demande_id)}</div>
-                  <div className="pipeline-card__meta">Cloturee: {formatDateTime(m.updated_at)}</div>
+            <section className="pipeline-col pipeline-col--closing">
+              <button type="button" className="pipeline-col__toggle" onClick={() => handleTogglePipelineSection("closing")}>
+                <div className="pipeline-col__header">
+                  <span className="pipeline-col__dot" />
+                  <strong>À clôturer</strong>
+                  <span className="pipeline-count">{shownClosingMissions.length}</span>
                 </div>
-              ))}
-              {shownClosingMissions.length === 0 ? <div className="pipeline-empty">Aucune mission</div> : null}
-            </div>
+                <span className="pipeline-col__chevron">{pipelineOpenBySection.closing ? "▾" : "▸"}</span>
+              </button>
+              {pipelineOpenBySection.closing ? (
+                <>
+                  {shownClosingMissions.map((m) => (
+                    <div key={m.id} className="pipeline-card pipeline-card--closing">
+                      <div className="pipeline-card__title">{missionLabel(m)}</div>
+                      <div className="pipeline-card__meta">{demandeLabelById(m.demande_id)}</div>
+                      <div className="pipeline-card__meta">Cloturee: {formatDateTime(m.updated_at)}</div>
+                    </div>
+                  ))}
+                  {shownClosingMissions.length === 0 ? <div className="pipeline-empty">Aucune mission</div> : null}
+                </>
+              ) : null}
+            </section>
           </div>
         )}
       </section>
 
-      {/* Unregister section */}
-      <section className="card stack desinscription-section">
-        <h3>Désinscription</h3>
-        <p>Supprimer définitivement votre compte prestataire.</p>
-        <button type="button" className="ghost danger" onClick={() => void handleUnregister()}>Désinscription</button>
-      </section>
+      <button
+        type="button"
+        className="ghost dashboard-unregister-fab"
+        onClick={() => handleUnregister()}
+        title="Supprimer définitivement mon compte"
+      >
+        Désinscription
+      </button>
+
     </section>
   );
 }

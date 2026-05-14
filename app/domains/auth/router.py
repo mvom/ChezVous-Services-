@@ -1,10 +1,11 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_role, get_current_user, get_db, require_roles
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.db.models import User
 from app.domains.auth.admin_service import admin_service
 from app.domains.auth.service import auth_service
@@ -48,7 +49,8 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> UserRead:
 
 
 @router.post("/login", response_model=SessionResponse)
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> SessionResponse:
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> SessionResponse:
     token, session = auth_service.login(db, payload)
     _set_auth_cookie(response, token)
     return session

@@ -217,6 +217,26 @@ def test_login_with_ambiguous_identifier_requires_role(client):
 
 
 @pytest.mark.integration
+def test_login_rate_limiter_blocks_after_repeated_attempts(client):
+    register_user(
+        client,
+        full_name="Rate Limit User",
+        phone="699110220",
+        password="password123",
+        role="client",
+    )
+
+    payload = {"phone": "+237 699 110 220", "password": "wrongpassword"}
+
+    for _ in range(5):
+        resp = client.post("/api/v1/auth/login", json=payload)
+        assert resp.status_code == 401
+
+    blocked = client.post("/api/v1/auth/login", json=payload)
+    assert blocked.status_code == 429
+
+
+@pytest.mark.integration
 def test_unregister_deletes_authenticated_user(client):
     register_user(
         client,

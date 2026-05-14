@@ -1,5 +1,4 @@
-from datetime import datetime
-
+from datetime import datetime, timezone
 from enum import StrEnum
 
 from pydantic import Field, field_validator
@@ -46,8 +45,19 @@ class DemandeCreate(AppBaseModel):
     quartier: str = Field(min_length=2, max_length=120)
     client_availability_mode: ClientAvailabilityMode = ClientAvailabilityMode.FLEXIBLE
     client_availability_note: str | None = Field(default=None, max_length=255)
+    requested_datetime: datetime | None = None
     priority: DemandePriority = DemandePriority.NORMALE
     sub_services: list[str] = Field(default_factory=list)
+
+    @field_validator("requested_datetime")
+    @classmethod
+    def ensure_requested_datetime_not_past(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return value
+        normalized = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        if normalized < datetime.now(timezone.utc):
+            raise ValueError("La date/heure demandee ne peut pas etre dans le passe")
+        return value
 
 
 class DemandeClientUpdate(AppBaseModel):
@@ -59,8 +69,19 @@ class DemandeClientUpdate(AppBaseModel):
     quartier: str = Field(min_length=2, max_length=120)
     client_availability_mode: ClientAvailabilityMode = ClientAvailabilityMode.FLEXIBLE
     client_availability_note: str | None = Field(default=None, max_length=255)
+    requested_datetime: datetime | None = None
     priority: DemandePriority = DemandePriority.NORMALE
     sub_services: list[str] = Field(default_factory=list)
+
+    @field_validator("requested_datetime")
+    @classmethod
+    def ensure_update_requested_datetime_not_past(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return value
+        normalized = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        if normalized < datetime.now(timezone.utc):
+            raise ValueError("La date/heure demandee ne peut pas etre dans le passe")
+        return value
 
 
 class DemandeUpdateStatus(AppBaseModel):

@@ -12,7 +12,7 @@ COPY ./frontend/vite.config.ts ./
 COPY ./frontend/index.html ./
 COPY ./frontend/src ./src
 
-RUN npm run build
+RUN npm run build:docker
 
 FROM nginx:1.27-alpine
 

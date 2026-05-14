@@ -289,7 +289,7 @@ export default function AppOverlays({
                                 <span className={`step-badge step-badge--${stepBadge.key}`}>{stepBadge.label}</span>
                               ) : null}
                             </div>
-                            {event.previous_status && event.new_status ? (
+                            {event.previous_status && event.new_status && event.previous_status !== event.new_status && event.new_status !== "annulee" ? (
                               <p className="timeline-detail">Transition: {formatStatusLabel(event.previous_status)} {"->"} {formatStatusLabel(event.new_status)}</p>
                             ) : null}
                             {demandeEventActor(event) !== "Systeme" ? (

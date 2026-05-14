@@ -127,6 +127,8 @@ function makeVm(overrides: Partial<PrestataireDashboardViewModel> = {}): Prestat
     pipelineIdQuery: "",
     setPipelineIdQuery: vi.fn(),
     missionPendingId: null,
+    dismissedOpportunityIds: [],
+    consultedOpportunityIds: [],
     notifsPanelOpen: false,
     setNotifsPanelOpen: vi.fn(),
     prestataireCreateServiceRef: formRef,
@@ -137,6 +139,7 @@ function makeVm(overrides: Partial<PrestataireDashboardViewModel> = {}): Prestat
     // Handlers
     handleCreateService: vi.fn(),
     handleUpdateMissionStatus: vi.fn(),
+    markOpportunityConsulted: vi.fn(),
     handleVisibilityChange: vi.fn(),
     handleZonePreferenceChange: vi.fn(),
     handleMarkAllNotifsRead: vi.fn(),
@@ -169,13 +172,6 @@ describe("PrestataireWorkspace", () => {
     renderWorkspace({ logout });
     fireEvent.click(screen.getByText("Se déconnecter"));
     expect(logout).toHaveBeenCalledTimes(1);
-  });
-
-  it("calls handleUnregister on désinscription click", () => {
-    const handleUnregister = vi.fn();
-    renderWorkspace({ handleUnregister });
-    fireEvent.click(screen.getAllByText("Désinscription")[0]);
-    expect(handleUnregister).toHaveBeenCalledTimes(1);
   });
 
   it("calls refreshDashboard on Actualiser click", () => {
@@ -217,6 +213,50 @@ describe("PrestataireWorkspace", () => {
     renderWorkspace({ setPrestataireStatusFilter });
     fireEvent.click(screen.getByText("Tout le marché"));
     expect(setPrestataireStatusFilter).toHaveBeenCalledWith("all");
+  });
+
+  it("renders only one 'Voir opportunités' button and shows badge count on cockpit button", () => {
+    const demandes = Array.from({ length: 5 }, (_, index) =>
+      makeDemande({ id: index + 1, status: "ouverte", category: "plomberie" })
+    );
+    renderWorkspace({ demandes });
+
+    const opportunitiesButtons = screen.getAllByRole("button", { name: /Voir opportunités/i });
+    expect(opportunitiesButtons).toHaveLength(1);
+    expect(within(opportunitiesButtons[0]).getByText("5")).toBeInTheDocument();
+  });
+
+  it("caps cockpit opportunities badge to +9 when count reaches 10+", () => {
+    const demandes = Array.from({ length: 12 }, (_, index) =>
+      makeDemande({ id: index + 1, status: "ouverte", category: "plomberie" })
+    );
+    renderWorkspace({ demandes });
+
+    const opportunitiesButton = screen.getByRole("button", { name: /Voir opportunités/i });
+    expect(within(opportunitiesButton).getByText("+9")).toBeInTheDocument();
+  });
+
+  it("updates opportunities badge using only non-consulted opportunities", () => {
+    const demandes = Array.from({ length: 3 }, (_, index) =>
+      makeDemande({ id: index + 1, status: "ouverte", category: "plomberie" })
+    );
+    renderWorkspace({ demandes, consultedOpportunityIds: [1, 2] });
+
+    const opportunitiesButton = screen.getByRole("button", { name: /Voir opportunités/i });
+    expect(within(opportunitiesButton).getByText("1")).toBeInTheDocument();
+    // Les cartes restent visibles même consultées
+    expect(screen.getByText(/Nouvelles opportunités/)).toBeInTheDocument();
+  });
+
+  it("shows seen and unseen eye indicators on opportunity cards", () => {
+    const demandes = [
+      makeDemande({ id: 1, status: "ouverte", category: "plomberie" }),
+      makeDemande({ id: 2, status: "ouverte", category: "plomberie" }),
+    ];
+    renderWorkspace({ demandes, consultedOpportunityIds: [1] });
+
+    expect(screen.getByLabelText("Opportunité consultée")).toBeInTheDocument();
+    expect(screen.getByLabelText("Opportunité non consultée")).toBeInTheDocument();
   });
 
   it("calls setZonePrefVille when input changes", () => {
@@ -308,10 +348,12 @@ describe("PrestataireWorkspace", () => {
 
   it("calls openDemandDetailModal on demande click", () => {
     const openDemandDetailModal = vi.fn();
+    const markOpportunityConsulted = vi.fn();
     const demandes = [makeDemande({ id: 1, status: "ouverte" })];
-    renderWorkspace({ demandes, openDemandDetailModal });
+    renderWorkspace({ demandes, openDemandDetailModal, markOpportunityConsulted });
     const demandeItems = screen.getAllByText("plomberie - Bastos");
     fireEvent.click(demandeItems[0]);
+    expect(markOpportunityConsulted).toHaveBeenCalledWith(1);
     expect(openDemandDetailModal).toHaveBeenCalled();
   });
 
@@ -407,8 +449,7 @@ describe("PrestataireWorkspace", () => {
     expect(screen.getByText(/mission\(s\) proche/i)).toBeInTheDocument();
   });
 
-  it("renders myTrust response time when average_response_minutes is set", () => {
-    // missions with prestataire_summary that has average_response_minutes < 60
+  it("does not render response-time KPI anymore", () => {
     const missions = [
       makeMission({
         id: 90,
@@ -422,24 +463,23 @@ describe("PrestataireWorkspace", () => {
       }),
     ];
     renderWorkspace({ missions });
-    expect(screen.getByText("30 min")).toBeInTheDocument();
+    expect(screen.queryByText(/Temps de reponse/i)).not.toBeInTheDocument();
   });
 
-  it("renders myTrust response time in hours when >= 60 minutes", () => {
-    const missions = [
-      makeMission({
-        id: 91,
-        prestataire_id: 42,
-        status: "terminee",
-        prestataire_summary: {
-          user_id: 42,
-          display_name: "Moi",
-          trust: { verified: true, rating: 4.5, completed_missions: 10, total_missions: 12, average_response_minutes: 90, eta_reliability_percent: 90 },
-        },
-      }),
-    ];
-    renderWorkspace({ missions });
-    expect(screen.getByText(/1 h/)).toBeInTheDocument();
+  it("requires checking at least one service domain before entering description", () => {
+    renderWorkspace();
+    const description = screen.getByRole("textbox", { name: "Description" });
+    expect(description).toBeDisabled();
+
+    const serviceFormHeading = screen.getByRole("heading", { name: "Créer un service" });
+    const serviceForm = serviceFormHeading.closest("form");
+    if (!serviceForm) throw new Error("create service form not found");
+
+    const serviceDropdownTrigger = within(serviceForm).getByRole("button", { name: /Choisir les services que vous rendez/i });
+    fireEvent.click(serviceDropdownTrigger);
+    fireEvent.click(screen.getByRole("button", { name: "Plomberie" }));
+
+    expect(description).not.toBeDisabled();
   });
 
   it("shows 'Aucune carte ne correspond' when pipeline filter excludes all cards", () => {

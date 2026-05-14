@@ -4,6 +4,13 @@ import { useAppCtx } from "../../AppContext";
 import { apiFetch, jsonHeaders, userFacingError } from "../../utils";
 import type { DemandeCategory, PipelineCardFilter, PrestataireRecord, PrestataireStatusFilter } from "../../types";
 
+function categoryLabel(category: string): string {
+  return category
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function usePrestataireDashboardViewModel() {
   const ctx = useAppCtx();
   const {
@@ -23,11 +30,35 @@ export function usePrestataireDashboardViewModel() {
   const [prestataireVilleFilter, setPrestataireVilleFilter] = useState("all");
   const [prestataireArrondissementFilter, setPrestataireArrondissementFilter] = useState("all");
   const [prestataireQuartierFilter, setPrestataireQuartierFilter] = useState("all");
-  const [pipelineVisibleCount, setPipelineVisibleCount] = useState<5 | 10>(5);
+  const [pipelineVisibleCount, setPipelineVisibleCount] = useState<5 | 10 | "all">(5);
   const [pipelineCardFilter, setPipelineCardFilter] = useState<PipelineCardFilter>("all");
   const [pipelineIdQuery, setPipelineIdQuery] = useState("");
   const [missionPendingId, setMissionPendingId] = useState<number | null>(null);
   const [notifsPanelOpen, setNotifsPanelOpen] = useState(false);
+  const [dismissedOpportunityIds, setDismissedOpportunityIds] = useState<number[]>(() => {
+    const key = `provider-dismissed-opportunities-${ctx.userId}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as number[];
+      return Array.isArray(parsed) ? parsed.filter((v) => Number.isInteger(v)) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Nouvel état pour les opportunités consultées
+  const [consultedOpportunityIds, setConsultedOpportunityIds] = useState<number[]>(() => {
+    const key = `provider-consulted-opportunities-${ctx.userId}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as number[];
+      return Array.isArray(parsed) ? parsed.filter((v) => Number.isInteger(v)) : [];
+    } catch {
+      return [];
+    }
+  });
   const prestataireCreateServiceRef = useRef<HTMLFormElement | null>(null);
 
   const ownServices = useMemo(() => services.filter((s) => s.prestataire_id === userId), [services, userId]);
@@ -39,14 +70,28 @@ export function usePrestataireDashboardViewModel() {
     if (!claims) return;
     const form = event.currentTarget;
     const formData = new FormData(form);
+    const selectedCategories = formData
+      .getAll("selected_categories")
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+    if (selectedCategories.length === 0) {
+      setToast({ kind: "err", message: "Choisissez au moins un service parmi les 8 domaines." });
+      return;
+    }
+    const generatedServiceName =
+      selectedCategories.length === 1
+        ? categoryLabel(selectedCategories[0])
+        : `Pack services (${selectedCategories.length})`;
+    const descriptionInput = String(formData.get("description") || "").trim();
+    const withDomainsPrefix = `Domaines: ${selectedCategories.join(", ")}\n\n${descriptionInput}`;
     try {
       await apiFetch<void>("/services", {
         method: "POST",
         headers: jsonHeaders(),
         body: JSON.stringify({
           prestataire_id: userId,
-          name: String(formData.get("name") || ""),
-          description: String(formData.get("description") || ""),
+          name: generatedServiceName,
+          description: withDomainsPrefix,
           availability_slots: String(formData.get("availability_slots") || "").trim(),
           price: (() => {
             const raw = String(formData.get("price") || "").trim();
@@ -143,6 +188,31 @@ export function usePrestataireDashboardViewModel() {
     }
   }
 
+  function handleDismissOpportunity(demandeId: number): void {
+    setDismissedOpportunityIds((prev) => {
+      if (prev.includes(demandeId)) return prev;
+      const next = [...prev, demandeId];
+      window.localStorage.setItem(`provider-dismissed-opportunities-${ctx.userId}`, JSON.stringify(next));
+      return next;
+    });
+    setToast({ kind: "ok", message: "Opportunité retirée de votre pipeline." });
+  }
+
+  function clearDismissedOpportunities(): void {
+    setDismissedOpportunityIds([]);
+    window.localStorage.removeItem(`provider-dismissed-opportunities-${ctx.userId}`);
+  }
+
+  // Marquer une opportunité comme consultée
+  function markOpportunityConsulted(demandeId: number): void {
+    setConsultedOpportunityIds((prev) => {
+      if (prev.includes(demandeId)) return prev;
+      const next = [...prev, demandeId];
+      window.localStorage.setItem(`provider-consulted-opportunities-${ctx.userId}`, JSON.stringify(next));
+      return next;
+    });
+  }
+
   return {
     // ─ Data from context
     token: ctx.token,
@@ -200,6 +270,8 @@ export function usePrestataireDashboardViewModel() {
     pipelineIdQuery,
     setPipelineIdQuery,
     missionPendingId,
+    dismissedOpportunityIds,
+    consultedOpportunityIds,
     notifsPanelOpen,
     setNotifsPanelOpen,
     prestataireCreateServiceRef,
@@ -209,9 +281,12 @@ export function usePrestataireDashboardViewModel() {
     matchingDemandesCount,
     // ─ Handlers
     handleCreateService,
+    markOpportunityConsulted,
     handleUpdateMissionStatus,
     handleVisibilityChange,
     handleZonePreferenceChange,
     handleMarkAllNotifsRead,
+    handleDismissOpportunity,
+    clearDismissedOpportunities,
   };
 }

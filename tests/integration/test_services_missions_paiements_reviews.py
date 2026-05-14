@@ -112,12 +112,43 @@ def test_prestataire_can_create_mission(client):
 
 
 @pytest.mark.integration
-def test_client_cannot_create_mission(client):
+def test_client_can_create_mission(client):
     c, c_token = _reg_login(client, "Client M2", "699410003", "client")
     p, _ = _reg_login(client, "Presta M2", "699410004", "prestataire")
     dem = _demande(client, c_token, c["id"])
     resp = _mission(client, c_token, dem["id"], c["id"], p["id"])
-    assert resp.status_code == 403
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "en_attente"
+
+
+@pytest.mark.integration
+def test_prestataire_desistement_reopens_demande_and_allows_reassignment(client):
+    c, c_token = _reg_login(client, "Client M2b", "699410103", "client")
+    p1, t1 = _reg_login(client, "Presta M2b-1", "699410104", "prestataire")
+    p2, _ = _reg_login(client, "Presta M2b-2", "699410105", "prestataire")
+
+    dem = _demande(client, c_token, c["id"])
+    mission = _mission(client, c_token, dem["id"], c["id"], p1["id"]).json()
+
+    desist = client.patch(
+        f"/api/v1/missions/{mission['id']}/status",
+        headers={"Authorization": f"Bearer {t1}"},
+        json={"status": "annulee"},
+    )
+    assert desist.status_code == 200
+    assert desist.json()["status"] == "annulee"
+
+    demandes_resp = client.get("/api/v1/demandes", headers={"Authorization": f"Bearer {c_token}"})
+    assert demandes_resp.status_code == 200
+    demande_after = next(d for d in demandes_resp.json() if d["id"] == dem["id"])
+    assert demande_after["status"] == "ouverte"
+
+    reassigned = _mission(client, c_token, dem["id"], c["id"], p2["id"])
+    assert reassigned.status_code == 201
+    reassigned_data = reassigned.json()
+    assert reassigned_data["id"] == mission["id"]
+    assert reassigned_data["prestataire_id"] == p2["id"]
+    assert reassigned_data["status"] == "en_attente"
 
 
 @pytest.mark.integration

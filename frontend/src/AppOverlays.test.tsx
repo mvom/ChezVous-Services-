@@ -286,4 +286,22 @@ describe("AppOverlays", () => {
     );
     expect(screen.getByText("Status changed")).toBeInTheDocument();
   });
+
+  it("does not render transition detail for cancelled demand events", () => {
+    const demande = makeDemande({
+      events: [
+        {
+          id: 1,
+          event_type: "annulee",
+          previous_status: "ouverte",
+          new_status: "annulee",
+          actor_user_id: 1,
+          actor_label: "Client",
+          created_at: "2024-01-02T00:00:00",
+        } as import("./types").DemandeEvent,
+      ],
+    });
+    render(<AppOverlays {...makeProps({ selectedDemandForDetail: demande })} />);
+    expect(screen.queryByText(/Transition:/)).not.toBeInTheDocument();
+  });
 });

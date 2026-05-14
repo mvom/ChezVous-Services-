@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from uuid import uuid4
 
 from app.api.deps import get_db
 from app.db.models import Base
@@ -47,6 +48,8 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
+        # Isolate limiter buckets per test function to avoid cross-test interference.
+        test_client.headers.update({"X-RateLimit-Key": f"test-{uuid4().hex}"})
         yield test_client
     app.dependency_overrides.clear()
 

@@ -1,4 +1,7 @@
-from datetime import UTC, datetime, timedelta
+import datetime as dt
+from datetime import datetime, timedelta
+
+UTC = dt.timezone.utc
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext

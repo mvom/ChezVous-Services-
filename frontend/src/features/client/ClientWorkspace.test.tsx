@@ -86,7 +86,9 @@ function makeVm(overrides: Partial<ClientDashboardViewModel> = {}): ClientDashbo
   const completionRate = clientMissions.length > 0 ? Math.round((completedMissions / clientMissions.length) * 100) : 0;
   const latestOpenDemande = overrides.latestOpenDemande !== undefined
     ? overrides.latestOpenDemande
-    : [...clientDemandes].filter((d) => d.status === "ouverte").sort((a, b) => b.id - a.id)[0];
+    : [...clientDemandes]
+        .filter((d) => d.status === "ouverte")
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id)[0];
 
   return {
     // ─ Local UI state
@@ -213,13 +215,6 @@ describe("ClientWorkspace", () => {
     expect(logout).toHaveBeenCalledTimes(1);
   });
 
-  it("calls handleUnregister on désinscription click", () => {
-    const handleUnregister = vi.fn();
-    renderWorkspace({ handleUnregister });
-    fireEvent.click(screen.getByText("Désinscription"));
-    expect(handleUnregister).toHaveBeenCalledTimes(1);
-  });
-
   it("calls refreshClientDashboard on Actualiser click", () => {
     const refreshClientDashboard = vi.fn();
     renderWorkspace({ refreshClientDashboard });
@@ -269,37 +264,6 @@ describe("ClientWorkspace", () => {
     const demandes = [makeDemande({ id: 1, status: "annulee" })];
     renderWorkspace({ demandes });
     expect(screen.queryByText("Modifier")).not.toBeInTheDocument();
-  });
-
-  it("renders missions in the history section", () => {
-    const missions = [makeMission({ id: 10, client_id: 42, status: "terminee" })];
-    renderWorkspace({ missions });
-    expect(screen.getByText("Mission #10")).toBeInTheDocument();
-  });
-
-  it("shows empty missions message when no missions", () => {
-    renderWorkspace();
-    expect(screen.getByText("Aucun service rendu pour le moment.")).toBeInTheDocument();
-  });
-
-  it("shows loyalty points when clientLoyalty is set", () => {
-    renderWorkspace({
-      clientLoyalty: {
-        loyalty_points: 75,
-        completed_missions_count: 3,
-        next_milestone: 100,
-        progress_percent: 75,
-      },
-    });
-    expect(screen.getByText(/75/)).toBeInTheDocument();
-  });
-
-  it("calls setClientStatusFilter via Demandes ouvertes button", () => {
-    const setClientStatusFilter = vi.fn();
-    renderWorkspace({ setClientStatusFilter });
-    // multiple buttons with this text — click the first
-    fireEvent.click(screen.getAllByText("Demandes ouvertes")[0]);
-    expect(setClientStatusFilter).toHaveBeenCalledWith("ouverte");
   });
 
   it("calls setClientQuery on input change", () => {
@@ -360,45 +324,6 @@ describe("ClientWorkspace", () => {
     expect(screen.getByText("Synchronisation en cours de vos demandes et missions...")).toBeInTheDocument();
   });
 
-  it("shows matching widget section when latestOpenDemande exists", () => {
-    const demandes = [makeDemande({ id: 1, status: "ouverte" })];
-    renderWorkspace({ demandes });
-    expect(screen.getByText("Matching intelligent")).toBeInTheDocument();
-  });
-
-  it("calls refreshMatchingPreview when Actualiser clicked in matching widget", () => {
-    const refreshMatchingPreview = vi.fn().mockResolvedValue(undefined);
-    const demandes = [makeDemande({ id: 1, status: "ouverte" })];
-    renderWorkspace({ demandes, refreshMatchingPreview });
-    // The matching widget has its own 'Actualiser' button distinct from the main one
-    const actualisers = screen.getAllByText("Actualiser");
-    // The second one should be in the matching widget (first is the main dashboard button)
-    fireEvent.click(actualisers[actualisers.length - 1]);
-    expect(refreshMatchingPreview).toHaveBeenCalled();
-  });
-
-  it("renders Nouvelle demande CTA button", () => {
-    renderWorkspace();
-    // The hero section has a 'Nouvelle demande' button
-    const btns = screen.getAllByText("Nouvelle demande");
-    expect(btns.length).toBeGreaterThan(0);
-    fireEvent.click(btns[0]);
-  });
-
-  it("renders 'Voir les demandes ouvertes' button when pending demandes > 0", () => {
-    const demandes = [makeDemande({ id: 1, status: "ouverte" })];
-    renderWorkspace({ demandes });
-    const btn = screen.getByText("Voir les demandes ouvertes");
-    expect(btn).toBeInTheDocument();
-    fireEvent.click(btn);
-  });
-
-  it("renders scheduled_at eta-line in mission history", () => {
-    const missions = [makeMission({ id: 11, client_id: 42, status: "en_cours", scheduled_at: "2026-06-01T10:00:00" })];
-    renderWorkspace({ missions });
-    expect(screen.getByText(/Prevue le/)).toBeInTheDocument();
-  });
-
   it("shows 'Dernières préférences mémorisées' when lastDraft is in localStorage", () => {
     const draft = { ville: "Douala", arrondissement: "Douala 1", quartier: "Bonanjo", priority: "normale", client_availability_mode: "flexible", client_availability_note: "" };
     window.localStorage.setItem("sm_last_demande_draft", JSON.stringify(draft));
@@ -420,9 +345,11 @@ describe("ClientWorkspace", () => {
   });
 
   it("renders PrestataireTrustCard when mission has prestataire_summary", () => {
+    const demandes = [makeDemande({ id: 12, client_id: 42, status: "attribuee" })];
     const missions = [
       makeMission({
         id: 12,
+        demande_id: 12,
         client_id: 42,
         status: "terminee",
         prestataire_summary: {
@@ -433,7 +360,7 @@ describe("ClientWorkspace", () => {
         },
       }),
     ];
-    renderWorkspace({ missions });
+    renderWorkspace({ demandes, missions });
     expect(screen.getByText("Martin Fix")).toBeInTheDocument();
   });
 
@@ -459,51 +386,29 @@ describe("ClientWorkspace", () => {
     expect(screen.getByText(/Intervention prévue le/)).toBeInTheDocument();
   });
 
-  it("renders matching candidates list with topCandidates", () => {
-    const demandes = [makeDemande({ id: 1, status: "ouverte" })];
-    const latestOpenDemande = demandes[0];
-    const candidate = {
-      user_id: 50,
-      display_name: "Artisan Pro",
-      avatar_url: null,
-      trust: { verified: true, rating: 4.5, completed_missions: 5, total_missions: 7, eta_reliability_percent: 90 },
-      score_total: 85,
-      score_zone: 30,
-      score_rating: 25,
-      score_completion: 20,
-      score_response: 10,
-      distance_km: 3.5,
-    };
-    const matchingPreview = { demande_id: 1, available_count: 1, candidates: [candidate] };
-    const topCandidates = [candidate];
-    renderWorkspace({ demandes, latestOpenDemande, matchingPreview, topCandidates });
-    expect(screen.getByText("Artisan Pro")).toBeInTheDocument();
-    expect(screen.getByText(/85\/100/)).toBeInTheDocument();
+
+  it("does not render removed secondary dashboard sections", () => {
+    renderWorkspace();
+    expect(screen.queryByText("Prochaine action recommandée")).not.toBeInTheDocument();
+    expect(screen.queryByText("Vue d'ensemble en 5 secondes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Matching intelligent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fidélité client")).not.toBeInTheDocument();
+    expect(screen.queryByText("Historique des services rendus")).not.toBeInTheDocument();
   });
 
-  it("clicks 'Voir l\\'historique des services' nextAction when activeMissions > 0", () => {
-    window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
-    // No pending demandes (to pick second branch), 1 active mission
-    const missions = [makeMission({ id: 99, client_id: 42, status: "en_cours" })];
-    renderWorkspace({ missions, demandes: [] });
-    const cta = screen.queryByText("Voir l'historique des services");
-    if (cta) {
-      fireEvent.click(cta);
-      expect(window.scrollTo).toHaveBeenCalled();
-    }
-  });
+  it("renders demandes in LIFO order", () => {
+    const demandes = [
+      makeDemande({ id: 1, created_at: "2024-01-01T00:00:00", description: "Ancienne demande" }),
+      makeDemande({ id: 2, created_at: "2024-01-02T00:00:00", description: "Demande recente" }),
+    ];
+    const clientDemandes = [...demandes].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id);
+    const filteredDemandes = clientDemandes;
 
-  it("clicks 'Créer une demande' nextAction when no pending and no active", () => {
-    renderWorkspace({ demandes: [], missions: [] });
-    const ctas = screen.queryAllByText("Créer une demande");
-    const ctaBtn = ctas.find(el => el.tagName === "BUTTON");
-    if (ctaBtn) {
-      fireEvent.click(ctaBtn);
-      // clientCreateFormRef.current is null, no error
-      expect(ctaBtn).toBeInTheDocument();
-    } else {
-      expect(screen.getByText("Votre cockpit client")).toBeInTheDocument();
-    }
+    renderWorkspace({ demandes, clientDemandes, filteredDemandes, latestOpenDemande: clientDemandes[0] });
+
+    const items = document.querySelectorAll(".list.clean-list > li .demande-meta");
+    expect(items[0]?.textContent).toContain("Demande recente");
+    expect(items[1]?.textContent).toContain("Ancienne demande");
   });
 
   it("clicks avatar wrap in client workspace", () => {

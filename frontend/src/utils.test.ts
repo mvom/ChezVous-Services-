@@ -416,29 +416,53 @@ describe("formatStatusLabel", () => {
 // ── demandeEventText ──────────────────────────────────────────────────────────
 
 describe("demandeEventText", () => {
-  it("returns EVENT_TEXT entry when event_type is known", () => {
-    const event = makeEvent({ event_type: "cree" });
+  it("affiche un label explicite pour chaque type d'événement connu", () => {
+    const knownTypes = [
+      "cree", "modifiee", "attribuee", "acceptee", "confirmee", "en_cours", "terminee", "notee", "annulee", "expiree", "litige", "en_attente"
+    ];
+    for (const type of knownTypes) {
+      const event = makeEvent({ event_type: type });
+      const text = demandeEventText(event);
+      expect(typeof text).toBe("string");
+      expect(text.length).toBeGreaterThan(0);
+      // Pas de texte technique
+      expect(text).not.toMatch(/Transition|Statut/);
+    }
+  });
+
+  it("affiche 'Demande publiée' pour modifiee avec new_status ouverte", () => {
+    const event = makeEvent({ event_type: "modifiee", previous_status: "ouverte", new_status: "ouverte" });
+    const text = demandeEventText(event);
+    expect(text).toContain("publi");
+    expect(text).not.toMatch(/Transition|Statut/);
+  });
+
+  it("affiche 'Demande annulée' pour annulee", () => {
+    const event = makeEvent({ event_type: "annulee", previous_status: "ouverte", new_status: "annulee" });
+    const text = demandeEventText(event);
+    expect(text).toContain("annul");
+    expect(text).not.toMatch(/Transition|Statut/);
+  });
+
+  it("affiche 'Statut mis à jour' pour changement de statut explicite hors annulation", () => {
+    const event = makeEvent({ event_type: "unknown_event", previous_status: "ouverte", new_status: "attribuee" });
+    const text = demandeEventText(event);
+    expect(text).toContain("Statut mis à jour");
+    expect(text).toContain("Attribuée");
+  });
+
+  it("affiche 'Statut :' pour nouveau statut seul", () => {
+    const event = makeEvent({ event_type: "unknown_event", previous_status: null, new_status: "en_cours" });
+    const text = demandeEventText(event);
+    expect(text).toContain("Statut :");
+    expect(text).toContain("En cours");
+  });
+
+  it("affiche un fallback lisible pour type inconnu sans statut", () => {
+    const event = makeEvent({ event_type: "inconnu", previous_status: null, new_status: null });
     const text = demandeEventText(event);
     expect(typeof text).toBe("string");
     expect(text.length).toBeGreaterThan(0);
-  });
-
-  it("returns transition text when previous and new status provided", () => {
-    const event = makeEvent({ event_type: "unknown_event", previous_status: "ouverte", new_status: "attribuee" });
-    const text = demandeEventText(event);
-    expect(text).toContain("Transition");
-  });
-
-  it("returns statut text when only new_status provided", () => {
-    const event = makeEvent({ event_type: "unknown_event", previous_status: null, new_status: "ouverte" });
-    const text = demandeEventText(event);
-    expect(text).toContain("Statut");
-  });
-
-  it("returns formatted event_type as fallback", () => {
-    const event = makeEvent({ event_type: "en_attente", previous_status: null, new_status: null });
-    const text = demandeEventText(event);
-    expect(typeof text).toBe("string");
   });
 });
 

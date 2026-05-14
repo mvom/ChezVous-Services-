@@ -94,6 +94,18 @@ button.ghost:hover {
   box-shadow: var(--shadow-md);
 }
 
+button.dashboard-primary-btn {
+  background: linear-gradient(135deg, var(--accent), #818cf8);
+  color: #fff;
+  border: 1px solid transparent;
+  box-shadow: 0 4px 14px rgba(var(--accent-rgb), 0.3);
+}
+
+button.dashboard-primary-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(var(--accent-rgb), 0.38);
+}
+
 button.inline-ghost {
   margin-left: 0.4rem;
   padding: 0.2rem 0.55rem;
@@ -1603,6 +1615,31 @@ button.inline-ghost.danger:hover {
   background: rgba(254, 202, 202, 0.82);
 }
 
+button.dashboard-unregister-fab {
+  position: fixed;
+  right: 1.2rem;
+  bottom: 1.2rem;
+  z-index: 40;
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.36);
+  background: rgba(254, 226, 226, 0.9);
+  box-shadow: 0 12px 28px rgba(127, 29, 29, 0.2);
+}
+
+button.dashboard-unregister-fab:hover {
+  background: rgba(254, 202, 202, 0.96);
+  box-shadow: 0 16px 30px rgba(127, 29, 29, 0.24);
+}
+
+@media (max-width: 768px) {
+  button.dashboard-unregister-fab {
+    right: 0.85rem;
+    bottom: 0.85rem;
+    padding: 0.66rem 0.95rem;
+    font-size: 0.86rem;
+  }
+}
+
 /* ── Phase 2: Grouped timeline ── */
 .event-timeline-grouped {
   margin: 0.35rem 0 0.5rem;
@@ -1863,6 +1900,23 @@ button.inline-ghost.danger:hover {
   min-height: 120px;
 }
 
+.pipeline-col__toggle {
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.pipeline-col__chevron {
+  color: var(--subtle);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
 .pipeline-col--pending {
   background: rgba(249, 250, 251, 0.85);
   border: 1px solid rgba(209, 213, 219, 0.6);
@@ -1971,6 +2025,8 @@ button.inline-ghost.danger:hover {
   border-color: rgba(99, 102, 241, 0.22);
   background: rgba(238, 242, 255, 0.95);
   cursor: pointer;
+  position: relative;
+  padding-right: 2.2rem;
 }
 
 .pipeline-card--new:hover {
@@ -1989,6 +2045,41 @@ button.inline-ghost.danger:hover {
   font-weight: 700;
   font-size: 0.88rem;
   color: var(--accent);
+}
+
+.pipeline-card__seen-indicator {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.6rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  color: #4f46e5;
+  pointer-events: none;
+}
+
+.pipeline-card__seen-indicator.is-seen {
+  background: rgba(224, 231, 255, 0.95);
+}
+
+.pipeline-card__seen-indicator.is-unseen {
+  opacity: 0.8;
+}
+
+.pipeline-card__seen-indicator.is-unseen::after {
+  content: "";
+  position: absolute;
+  width: 1.1rem;
+  height: 2px;
+  background: #ef4444;
+  transform: rotate(-35deg);
+  border-radius: 2px;
 }
 
 .pipeline-card__meta {
@@ -2032,6 +2123,15 @@ button.inline-ghost.danger:hover {
 
 .pipeline-btn--done:hover {
   background: linear-gradient(135deg, #059669, #10b981);
+}
+
+.pipeline-btn--danger {
+  background: linear-gradient(135deg, #ef4444, #f87171);
+  color: #fff;
+}
+
+.pipeline-btn--danger:hover {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
 }
 
 .pipeline-empty {
@@ -2899,6 +2999,90 @@ input[type="file"]:hover {
   flex-wrap: wrap;
 }
 
+.domain-multiselect {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.domain-multiselect__label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--subtle);
+}
+
+.domain-multiselect__trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.58rem 0.75rem;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: left;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05);
+}
+
+.domain-multiselect__summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-multiselect__chevron {
+  color: var(--subtle);
+  font-size: 0.78rem;
+}
+
+.domain-multiselect__menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  right: 0;
+  z-index: 25;
+  max-height: 270px;
+  overflow: auto;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: var(--shadow-soft);
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.domain-multiselect__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: none;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.domain-multiselect__option:hover {
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.domain-multiselect__option--active {
+  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--ink);
+  font-weight: 600;
+}
+
 /* ── Zone notifications ─────────────────────────────────── */
 .zone-notifs-card {
   display: flex;
@@ -3043,4 +3227,21 @@ input[type="file"]:hover {
   width: 15px;
   height: 15px;
   cursor: pointer;
+}
+
+/* ── Opportunity Badge ── */
+.opportunity-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 12px;
+  background: var(--ok);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+  white-space: nowrap;
 }

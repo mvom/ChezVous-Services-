@@ -107,11 +107,12 @@ export default function PublicAuth({ roleForPage }: Props): React.JSX.Element {
             <input
               type="text"
               name="phone"
-              placeholder="+237 6XX XXX XXX"
-              pattern="\+237\s\d{3}\s\d{3}\s\d{3}"
+              placeholder="+2376 XX XXX XXX"
+              pattern="\+2376\s\d{2}\s\d{3}\s\d{3}"
               onBlur={handlePhoneBlur}
               required
             />
+            <small className="helper-line">Format automatique : +2376 XX XXX XXX</small>
           </label>
           <label>
             <span>Mot de passe</span>

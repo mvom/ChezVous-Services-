@@ -12,6 +12,12 @@ from app.api.deps import get_db
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.log_config import get_logger, setup_logging
+from app.core.rate_limit import (
+    RateLimitExceeded,
+    SlowAPIMiddleware,
+    _rate_limit_exceeded_handler,
+    limiter,
+)
 
 
 try:
@@ -32,6 +38,10 @@ app = FastAPI(
     description="Structure initiale FastAPI: routes, schemas Pydantic et couche services.",
     debug=settings.app_debug,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(GZipMiddleware, minimum_size=512)
 
@@ -78,6 +88,17 @@ async def log_requests(request: Request, call_next):
             "client": request.client.host if request.client else "unknown",
         },
     )
+    return response
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
     return response
 
 

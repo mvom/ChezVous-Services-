@@ -1,5 +1,6 @@
 import { FormEvent } from "react";
 
+import { setAuthToken } from "./utils";
 import type { Demande, JwtClaims, Role, Service, SessionResponse, ToastState } from "./types";
 
 type UseAuthActionsDeps = {
@@ -28,7 +29,7 @@ function formatCameroonPhone(value: string): string {
   if (!/^\d{9}$/.test(digits)) {
     return value;
   }
-  return `+237 ${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)}`;
+  return `+237${digits.slice(0, 1)} ${digits.slice(1, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)}`;
 }
 
 function normalizePersonName(value: string): string {
@@ -82,6 +83,7 @@ export function useAuthActions({
       }
 
       form.reset();
+      setAuthToken(result.access_token ?? null);
       setClaims(nextClaims);
       setAvailableRoles(normalizeAvailableRoles(result.available_roles, result.active_role));
       await refreshDashboard(nextClaims);
@@ -137,6 +139,7 @@ export function useAuthActions({
         queuePendingAvatarUpload(registerAvatarDataUrl);
       }
       const registerClaims = sessionToClaims(loginResult);
+      setAuthToken(loginResult.access_token ?? null);
       setClaims(registerClaims);
       setAvailableRoles(normalizeAvailableRoles(loginResult.available_roles, loginResult.active_role));
       setRegisterAvatarDataUrl(null);
@@ -158,6 +161,7 @@ export function useAuthActions({
 
   function logout(): void {
     void apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
+    setAuthToken(null);
     setClaims(null);
     setAvailableRoles([]);
     setDemandes([]);

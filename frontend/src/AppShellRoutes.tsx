@@ -33,39 +33,35 @@ export default function AppShellRoutes({
       <Route
         path="/"
         element={
-          isLoggedIn ? (
-            <Navigate to={roleHomePath(role)} replace />
-          ) : (
-            <section className="panel auth-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>Bienvenue sur ChezVous Services+</h2>
-                  <p>Choisissez votre profil pour continuer.</p>
-                </div>
+          <section className="panel auth-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>Bienvenue sur ChezVous Services+</h2>
+                <p>Choisissez votre profil pour continuer.</p>
               </div>
-              <div className="choice-grid">
-                <article className="card stack role-card">
-                  <span className="role-icon">🏠</span>
-                  <h3>Client</h3>
-                  <p>Publiez vos besoins, suivez vos missions et trouvez des prestataires de qualité.</p>
-                  <button type="button" onClick={handleClientAuthAccessClick}>Accès client</button>
-                </article>
+            </div>
+            <div className="choice-grid">
+              <article className="card stack role-card">
+                <span className="role-icon">🏠</span>
+                <h3>Client</h3>
+                <p>Publiez vos besoins, suivez vos missions et trouvez des prestataires de qualité.</p>
+                <button type="button" onClick={handleClientAuthAccessClick}>Accès client</button>
+              </article>
 
-                <article className="card stack role-card">
-                  <span className="role-icon">🛠️</span>
-                  <h3>Prestataire</h3>
-                  <p>Proposez vos services, recevez des missions et développez votre activité.</p>
-                  <button type="button" onClick={handlePrestataireAuthAccessClick}>Accès prestataire</button>
-                </article>
-              </div>
-              <p className="subtle-note">Seuls les profils publics sont accessibles depuis cette page.</p>
-            </section>
-          )
+              <article className="card stack role-card">
+                <span className="role-icon">🛠️</span>
+                <h3>Prestataire</h3>
+                <p>Proposez vos services, recevez des missions et développez votre activité.</p>
+                <button type="button" onClick={handlePrestataireAuthAccessClick}>Accès prestataire</button>
+              </article>
+            </div>
+            <p className="subtle-note">Seuls les profils publics sont accessibles depuis cette page.</p>
+          </section>
         }
       />
 
-      <Route path="/auth/client" element={isLoggedIn ? <Navigate to={roleHomePath(role)} replace /> : <PublicAuth roleForPage="client" />} />
-      <Route path="/auth/prestataire" element={isLoggedIn ? <Navigate to={roleHomePath(role)} replace /> : <PublicAuth roleForPage="prestataire" />} />
+      <Route path="/auth/client" element={<PublicAuth roleForPage="client" />} />
+      <Route path="/auth/prestataire" element={<PublicAuth roleForPage="prestataire" />} />
 
       <Route
         path={hiddenAdminPath}

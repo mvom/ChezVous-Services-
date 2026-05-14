@@ -1,0 +1,1075 @@
+
+> services-menagers-frontend@0.1.0 test
+> vitest run AdminWorkspace.test.tsx
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/DATA/Documents/projets/app_menage/app_services_m├®nagers/frontend[39m
+
+ [31mÔØ»[39m src/features/admin/AdminWorkspace.test.tsx [2m([22m[2m22 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[33m 637[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mrenders admin heading[32m 79[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mshows empty state for no demandes[32m 17[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mshows empty state for no services[32m 16[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mshows empty state for no prestataires[32m 14[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mshows empty state for no users[32m 16[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mcalls logout on Se d├®connecter click[32m 21[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mcalls refreshDashboard on Actualiser click[32m 16[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mshows skeleton when dashboardPending[32m 16[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mshows prestataire with unverified status[32m 17[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mshows prestataire with verified status[32m 12[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mshows user management with role selector[32m 24[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mcalls setAdminRoleDraftByUserId on CustomSelect change[32m 135[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mignores role apply click when target user id is unknown[32m 40[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mignores delete click when target user id is unknown[32m 33[2mms[22m[39m
+[31m   [31m├ù[31m AdminWorkspace[2m > [22mshows V├®rifications prestataires scroll button[39m[32m 17[2mms[22m[39m
+[31m     ÔåÆ expected "spy" to be called at least once[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mshows at-risk missions when present[32m 43[2mms[22m[39m
+[31m   [31m├ù[31m AdminWorkspace[2m > [22mshows isSelf protection for current user[39m[32m 38[2mms[22m[39m
+[31m     ÔåÆ Unable to find an element with the text: Compte courant protege. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[31m
+  [36m<div>[31m
+    [36m<section[31m
+      [33mclass[31m=[32m"panel dashboard-panel"[31m
+    [36m>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"dashboard-title"[31m
+      [36m>[31m
+        [36m<div>[31m
+          [36m<h2>[31m
+            [0mConsole Admin[0m
+          [36m</h2>[31m
+          [36m<p>[31m
+            [0mEspace restreint pour la supervision de la plateforme et les contr├┤les transversaux.[0m
+          [36m</p>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"meta"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"ghost"[31m
+            [33mtype[31m=[32m"button"[31m
+          [36m>[31m
+            [0mActualiser[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"ghost"[31m
+            [33mtype[31m=[32m"button"[31m
+          [36m>[31m
+            [0mSe d├®connecter[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<section[31m
+        [33mclass[31m=[32m"card role-hero role-hero--admin"[31m
+      [36m>[31m
+        [36m<div>[31m
+          [36m<h3>[31m
+            [0mPilotage global de la plateforme[0m
+          [36m</h3>[31m
+          [36m<p>[31m
+            [0m0 demandes, 0 missions, 0 prestataire(s).[0m
+          [36m</p>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"role-hero__actions"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mtype[31m=[32m"button"[31m
+          [36m>[31m
+            [0mActualiser le tableau[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"ghost"[31m
+            [33mtype[31m=[32m"button"[31m
+          [36m>[31m
+            [0mV├®rifications prestataires[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</section>[31m
+      [36m<section[31m
+        [33mclass[31m=[32m"card recommendation-card admin-reco"[31m
+      [36m>[31m
+        [36m<div>[31m
+          [36m<h3>[31m
+            [0mAction prioritaire[0m
+          [36m</h3>[31m
+          [36m<p>[31m
+            [0mAucune verification en attente. Vous pouvez suivre les demandes ouvertes.[0m
+          [36m</p>[31m
+        [36m</div>[31m
+        [36m<button[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mTraiter maintenant[0m
+        [36m</button>[31m
+      [36m</section>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"stats-grid"[31m
+      [36m>[31m
+        [36m<article[31m
+          [33mclass[31m=[32m"metric-card "[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mDemandes ouvertes[0m
+          [36m</span>[31m
+          [36m<strong>[31m
+            [0m0[0m
+          [36m</strong>[31m
+        [36m</article>[31m
+        [36m<article[31m
+          [33mclass[31m=[32m"metric-card "[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mMissions actives[0m
+          [36m</span>[31m
+          [36m<strong>[31m
+            [0m0[0m
+          [36m</strong>[31m
+        [36m</article>[31m
+        [36m<article[31m
+          [33mclass[31m=[32m"metric-card wide "[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mPrestataires verifies[0m
+          [36m</span>[31m
+          [36m<strong>[31m
+            [0m0[0m
+          [36m</strong>[31m
+        [36m</article>[31m
+      [36m</div>[31m
+      [36m<section[31m
+        [33mclass[31m=[32m"card stack today-overview-card"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"section-head"[31m
+        [36m>[31m
+          [36m<h3>[31m
+            [0mAlertes operationnelles[0m
+          [36m</h3>[31m
+          [36m<span>[31m
+            [0m├Ç surveiller[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"today-overview-grid"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"today-overview-item "[31m
+          [36m>[31m
+            [36m<strong>[31m
+              [0m1[0m
+            [36m</strong>[31m
+            [36m<span>[31m
+              [0mClients[0m
+            [36m</span>[31m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"today-overview-item "[31m
+          [36m>[31m
+            [36m<strong>[31m
+              [0m0[0m
+            [36m</strong>[31m
+            [36m<span>[31m
+              [0mPrestataires[0m
+            [36m</span>[31m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"today-overview-item "[31m
+          [36m>[31m
+            [36m<strong>[31m
+              [0m0[0m
+            [36m</strong>[31m
+            [36m<span>[31m
+              [0mClient/Prestataire[0m
+            [36m</span>[31m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"today-overview-item "[31m
+          [36m>[31m
+            [36m<strong>[31m
+              [0m0[0m
+            [36m</strong>[31m
+            [36m<span>[31m
+              [0mA certifier[0m
+            [36m</span>[31m
+          [36m</div>[31m
+        [36m</div>[31m
+      [36m</section>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"two-col"[31m
+      [36m>[31m
+        [36m<section[31m
+          [33mclass[31m=[32m"card stack"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"section-head"[31m
+          [36m>[31m
+            [36m<h3>[31m
+              [0mVue d'ensemble des demandes[0m
+            [36m</h3>[31m
+            [36m<span>[31m
+              [0m├Ç jour[0m
+            [36m</span>[31m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"filter-row"[31m
+          [36m>[31m
+            [36m<input[31m
+              [33mplaceholder[31m=[32m"Recherche rapide (r├®f├®rence, lieu, description)"[31m
+              [33mtype[31m=[32m"text"[31m
+              [33mvalue[31m=[32m""[31m
+            [36m/>[31m
+          [36m</div>[31m
+          [36m<ul[31m
+            [33mclass[31m=[32m"list clean-list"[31m
+          [36m>[31m
+            [36m<li>[31m
+              [0mAucune demande pour ce filtre.[0m
+            [36m</li>[31m
+          [36m</ul>[31m
+        [36m</section>[31m
+        [36m<section[31m
+          [33mclass[31m=[32m"card stack"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"section-head"[31m
+          [36m>[31m
+            [36m<h3>[31m
+              [0mVue d'ensemble des services[0m
+            [36m</h3>[31m
+            [36m<span>[31m
+              [0m├Ç jour[0m
+            [36m</span>[31m
+          [36m</div>[31m
+          [36m<ul[31m
+            [33mclass[31m=[32m"list clean-list"[31m
+          [36m>[31m
+            [36m<li>[31m
+              [0mAucun service pour le moment.[0m
+            [36m</li>[31m
+          [36m</ul>[31m
+        [36m</section>[31m
+      [36m</div>[31m
+      [36m<section[31m
+        [33mclass[31m=[32m"card stack"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"section-head"[31m
+        [36m>[31m
+          [36m<h3>[31m
+            [0mMissions globales[0m
+          [36m</h3>[31m
+          [36m<span>[31m
+            [0m0 mission(s)[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"filter-row"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"custom-select"[31m
+          [36m>[31m
+            [36m<button[31m
+              [33maria-expanded[31m=[32m"false"[31m
+              [33maria-haspopup[31m=[32m"listbox"[31m
+              [33mclass[31m=[32m"custom-select__trigger"[31m
+              [33mtype[31m=[32m"button"[31m
+            [36m>[31m
+              [36m<span[31m
+                [33mclass[31m=[32m"custom-select__label"[31m
+              [36m>[31m
+                [0mTous les statuts[0m
+              [36m</span>[31m
+              [36m<svg[31m
+                [33maria-hidden[31m=[32m"true"[31m
+                [33mclass[31m=[32m"custom-select__chevron"[31m
+                [33mfill[31m=[32m"none"[31m
+                [33mheight[31m=[32m"16"[31m
+                [33mstroke[31m=[32m"currentColor"[31m
+                [33mstroke-linecap[31m=[32m"round"[31m
+                [33mstroke-linejoin[31m=[32m"round"[31m
+                [33mstroke-width[31m=[32m"2.5"[31m
+                [33mviewBox[31m=[32m"0 0 24 24"[31m
+                [33mwidth[31m=[32m"16"[31m
+                [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+              [36m>[31m
+                [36m<polyline[31m
+                  [33mpoints[31m=[32m"6 9 12 15 18 9"[31m
+                [36m/>[31m
+              [36m</svg>[31m
+            [36m</button>[31m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"custom-select"[31m
+          [36m>[31m
+            [36m<button[31m
+              [33maria-expanded[31m=[32m"false"[31m
+              [33maria-haspopup[31m=[32m"listbox"[31m
+              [33mclass[31m=[32m"custom-select__trigger"[31m
+              [33mtype[31m=[32m"button"[31m
+            [36m>[31m
+              [36m<span[31m
+                [33mclass[31m=[32m"custom-select__label"[31m
+              [36m>[31m
+                [0mTous les domaines[0m
+              [36m</span>[31m
+              [36m<svg[31m
+                [33maria-hidden[31m=[32m"true"[31m
+                [33mclass[31m=[32m"custom-select__chevron"[31m
+                [33mfill[31m=[32m"none"[31m
+                [33mheight[31m=[32m"16"[31m
+                [33mstroke[31m=[32m"currentColor"[31m
+                [33mstroke-linecap[31m=[32m"round"[31m
+                [33mstroke-linejoin[31m=[32m"round"[31m
+                [33mstroke-width[31m=[32m"2.5"[31m
+                [33mviewBox[31m=[32m"0 0 24 24"[31m
+                [33mwidth[31m=[32m"16"[31m
+                [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+              [36m>[31m
+                [36m<polyline[31m
+                  [33mpoints[31m=[32m"6 9 12 15 18 9"[31m
+                [36m/>[31m
+              [36m</svg>[31m
+            [36m</button>[31m
+          [36m</div>[31m
+          [36m<input[31m
+            [33mplaceholder[31m=[32m"Recherche mission (code mission / demande)"[31m
+            [33mtype[31m=[32m"text"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</div>[31m
+        [36m<ul[31m
+          [33mclass[31m=[32m"list clean-list"[31m
+        [36m>[31m
+          [36m<li>[31m
+            [0mAucune mission pour ce filtre.[0m
+          [36m</li>[31m
+        [36m</ul>[31m
+      [36m</section>[31m
+      [36m<section[31m
+        [33mclass[31m=[32m"card stack"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"section-head"[31m
+        [36m>[31m
+          [36m<h3>[31m
+            [0mUtilisateurs & Prestataires[0m
+          [36m</h3>[31m
+          [36m<span>[31m
+            [0m1 comptes[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"filter-row"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"custom-select"[31m
+          [36m>[31m
+            [36m<button[31m
+              [33maria-expanded[31m=[32m"false"[31m
+              [33maria-haspopup[31m=[32m"listbox"[31m
+              [33mclass[31m=[32m"custom-select__trigger"[31m
+              [33mtype[31m=[32m"button"[31m
+            [36m>[31m
+              [36m<span[31m
+                [33mclass[31m=[32m"custom-select__label"[31m
+              [36m>[31m
+                [0mTous les r├┤les[0m
+              [36m</span>[31m
+              [36m<svg[31m
+                [33maria-hidden[31m=[32m"true"[31m
+                [33mclass[31m=[32m"custom-select__chevron"[31m
+                [33mfill[31m=[32m"none"[31m
+                [33mheight[31m=[32m"16"[31m
+                [33mstroke[31m=[32m"currentColor"[31m
+                [33mstroke-linecap[31m=[32m"round"[31m
+                [33mstroke-linejoin[31m=[32m"round"[31m
+                [33mstroke-width[31m=[32m"2.5"[31m
+                [33mviewBox[31m=[32m"0 0 24 24"[31m
+                [33mwidth[31m=[32m"16"[31m
+                [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+              [36m>[31m
+                [36m<polyline[31m
+                  [33mpoints[31m=[32m"6 9 12 15 18 9"[31m
+                [36m/>[31m
+              [36m</svg>[31m
+            [36m</button>[31m
+          [36m</div>[31m
+          [36m<input[31m
+            [33mplaceholder[31m=[32m"Recherche rapide (nom, username, email, t├®l├®phone)"[31m
+            [33mtype[31m=[32m"text"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</div>[31m
+        [36m<ul[31m
+          [33mclass[31m=[32m"list clean-list"[31m
+        [36m>[31m
+          [36m<li[31m
+            [33mclass[31m=[32m"admin-provider-row admin-account-row"[31m
+          [36m>[31m
+            [36m<div[31m
+              [33mclass[31m=[32m"admin-provider-copy"[31m
+            [36m>[31m
+              [36m<strong>[31m
+                [0mFirst[0m
+                [0m [0m
+                [0mLast[0m
+              [36m</strong>[31m
+              [36m<div[31m
+                [33mclass[31m=[32m"timeline-line"[31m
+              [36m>[31m
+                [0m@[0m
+                [0muser1[0m
+                [0m ÔÇö [0m
+                [0m+237 699 000 000[0m
+              [36m</div>[31m
+              [36m<div[31m
+                [33mclass[31m=[32m"timeline-line"[31m
+              [36m>[31m
+                [0muser1@test.com[0m
+              [36m</div>[31m
+              [36m<div[31m
+                [33mclass[31m=[32m"timeline-line"[31m
+              [36m>[31m
+                [36m<span[31m
+                  [33mclass[31m=[32m"status-chip"[31m
+                [36m>[31m
+                  [0mclient[0m
+                [36m</span>[31m
+              [36m</div>[31m
+              [36m<div[31m
+                [33mclass[31m=[32m"timeline-line"[31m
+                [33mid[31m=[32m"admin-user-role-current-1"[31m
+              [36m>[31m
+                [0mR├┤le: [0m
+                [0madmin[0m
+              [36m</div>[31m
+            [36m</div>[31m
+            [36m<div[31m
+              [33mclass[31m=[32m"admin-provider-actions admin-account-actions"[31m
+            [36m>[31m
+              [36m<label[31m
+                [33mclass[31m=[32m"admin-role-picker"[31m
+              [36m>[31m
+                [36m<span[31m
+                  [33mclass[31m=[32m"helper-line"[31m
+                  [33mid[31m=[32m"admin-user-role-help-1"[31m
+                [36m>[31m
+                  [0mNouveau r├┤le[0m
+                [36m</span>[31m
+                [36m<div[31m
+                  [33mclass[31m=[32m"custom-select"[31m
+                [36m>[31m
+                  [36m<button[31m
+                    [33maria-describedby[31m=[32m"admin-user-role-current-1 admin-user-role-help-1"[31m
+                    [33maria-expanded[31m=[32m"false"[31m
+                    [33maria-haspopup[31m=[32m"listbox"[31m
+                    [33maria-label[31m=[32m"Nouveau role pour user1"[31m
+                    [33mclass[31m=[32m"custom-select__trigger"[31m
+                    [33mtype[31m=[32m"button"[31m
+                  [36m>[31m
+                    [36m<span[31m
+                      [33mclass[31m=[32m"custom-select__label"[31m
+                    [36m>[31m
+                      [0madmin[0m
+                    [36m</span>[31m
+                    [36m<svg[31m
+                      [33maria-hidden[31m=[32m"true"[31m
+                      [33mclass[31m=[32m"custom-select__chevron"[31m
+                      [33mfill[31m=[32m"none"[31m
+                      [33mheight[31m=[32m"16"[31m
+                      [33mstroke[31m=[32m"currentColor"[31m
+                      [33mstroke-linecap[31m=[32m"round"[31m
+                      [33mstroke-linejoin[31m=[32m"round"[31m
+                      [33mstroke-width[31m=[32m"2.5"[31m
+                      [33mviewBox[31m=[32m"0 0 24 24"[31m
+                      [33mwidth[31m=[32m"16"[31m
+                      [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+                    [36m>[31m
+                      [36m<polyline[31m
+                        [33mpoints[31m=[32m"6 9 12 15 18 9"[31m
+                      [36m/>[31m
+                    [36m</svg>[31m
+                  [36m</button>[31m
+                [36m</div>[31m
+              [36m</label>[31m
+              [36m<button[31m
+                [33maria-describedby[31m=[32m"admin-user-role-current-1"[31m
+                [33maria-label[31m=[32m"Appliquer le role admin pour user1"[31m
+                [33mclass[31m=[32m"ghost inline-ghost"[31m
+                [33mdata-role[31m=[32m"admin"[31m
+                [33mdata-user-id[31m=[32m"1"[31m
+                [33mdisabled[31m=[32m""[31m
+                [33mtype[31m=[32m"button"[31m
+              [36m>[31m
+                [0mAppliquer[0m
+              [36m</button>[31m
+              [36m<button[31m
+                [33maria-describedby[31m=[32m"admin-user-role-current-1 admin-user-self-protected-1"[31m
+                [33maria-label[31m=[32m"Supprimer le compte user1"[31m
+                [33mclass[31m=[32m"ghost inline-ghost danger"[31m
+                [33mdata-user-id[31m=[32m"1"[31m
+                [33mdisabled[31m=[32m""[31m
+                [33mtype[31m=[32m"button"[31m
+              [36m>[31m
+                [0mSupprimer[0m
+              [36m</button>[31m
+              [36m<span[31m
+                [33mclass[31m=[32m"helper-line"[31m
+                [33mid[31m=[32m"admin-user-self-protected-1"[31m
+              [36m>[31m
+                [0mCompte prot├®g├®[0m
+              [36m</span>[31m
+            [36m</div>[31m
+          [36m</li>[31m
+        [36m</ul>[31m
+      [36m</section>[31m
+    [36m</section>[31m
+  [36m</div>[31m
+[36m</body>[31m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22msorts users with 2+ users (triggers sort comparator)[32m 17[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mrenders atRisk missions items (covers atRiskMissions.map callback)[32m 11[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mrenders demandes in overview list[32m 14[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mrenders services in overview list[32m 18[2mms[22m[39m
+   [32mÔ£ô[39m AdminWorkspace[2m > [22mdoes not render duplicate logout/refresh buttons below at-risk section[32m 20[2mms[22m[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 2 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  src/features/admin/AdminWorkspace.test.tsx > AdminWorkspace > shows V├®rifications prestataires scroll button
+AssertionError: expected "spy" to be called at least once
+ ÔØ» src/features/admin/AdminWorkspace.test.tsx:190:29
+    188|     fireEvent.click(btn);
+    189|     // window.scrollTo was called
+    190|     expect(window.scrollTo).toHaveBeenCalled();
+       |                             ^
+    191|   });
+    192| 
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/2]ÔÄ»
+
+ FAIL  src/features/admin/AdminWorkspace.test.tsx > AdminWorkspace > shows isSelf protection for current user
+TestingLibraryElementError: Unable to find an element with the text: Compte courant protege. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <section
+      class="panel dashboard-panel"
+    >
+      <div
+        class="dashboard-title"
+      >
+        <div>
+          <h2>
+            Console Admin
+          </h2>
+          <p>
+            Espace restreint pour la supervision de la plateforme et les contr├┤les transversaux.
+          </p>
+        </div>
+        <div
+          class="meta"
+        >
+          <button
+            class="ghost"
+            type="button"
+          >
+            Actualiser
+          </button>
+          <button
+            class="ghost"
+            type="button"
+          >
+            Se d├®connecter
+          </button>
+        </div>
+      </div>
+      <section
+        class="card role-hero role-hero--admin"
+      >
+        <div>
+          <h3>
+            Pilotage global de la plateforme
+          </h3>
+          <p>
+            0 demandes, 0 missions, 0 prestataire(s).
+          </p>
+        </div>
+        <div
+          class="role-hero__actions"
+        >
+          <button
+            type="button"
+          >
+            Actualiser le tableau
+          </button>
+          <button
+            class="ghost"
+            type="button"
+          >
+            V├®rifications prestataires
+          </button>
+        </div>
+      </section>
+      <section
+        class="card recommendation-card admin-reco"
+      >
+        <div>
+          <h3>
+            Action prioritaire
+          </h3>
+          <p>
+            Aucune verification en attente. Vous pouvez suivre les demandes ouvertes.
+          </p>
+        </div>
+        <button
+          type="button"
+        >
+          Traiter maintenant
+        </button>
+      </section>
+      <div
+        class="stats-grid"
+      >
+        <article
+          class="metric-card "
+        >
+          <span>
+            Demandes ouvertes
+          </span>
+          <strong>
+            0
+          </strong>
+        </article>
+        <article
+          class="metric-card "
+        >
+          <span>
+            Missions actives
+          </span>
+          <strong>
+            0
+          </strong>
+        </article>
+        <article
+          class="metric-card wide "
+        >
+          <span>
+            Prestataires verifies
+          </span>
+          <strong>
+            0
+          </strong>
+        </article>
+      </div>
+      <section
+        class="card stack today-overview-card"
+      >
+        <div
+          class="section-head"
+        >
+          <h3>
+            Alertes operationnelles
+          </h3>
+          <span>
+            ├Ç surveiller
+          </span>
+        </div>
+        <div
+          class="today-overview-grid"
+        >
+          <div
+            class="today-overview-item "
+          >
+            <strong>
+              1
+            </strong>
+            <span>
+              Clients
+            </span>
+          </div>
+          <div
+            class="today-overview-item "
+          >
+            <strong>
+              0
+            </strong>
+            <span>
+              Prestataires
+            </span>
+          </div>
+          <div
+            class="today-overview-item "
+          >
+            <strong>
+              0
+            </strong>
+            <span>
+              Client/Prestataire
+            </span>
+          </div>
+          <div
+            class="today-overview-item "
+          >
+            <strong>
+              0
+            </strong>
+            <span>
+              A certifier
+            </span>
+          </div>
+        </div>
+      </section>
+      <div
+        class="two-col"
+      >
+        <section
+          class="card stack"
+        >
+          <div
+            class="section-head"
+          >
+            <h3>
+              Vue d'ensemble des demandes
+            </h3>
+            <span>
+              ├Ç jour
+            </span>
+          </div>
+          <div
+            class="filter-row"
+          >
+            <input
+              placeholder="Recherche rapide (r├®f├®rence, lieu, description)"
+              type="text"
+              value=""
+            />
+          </div>
+          <ul
+            class="list clean-list"
+          >
+            <li>
+              Aucune demande pour ce filtre.
+            </li>
+          </ul>
+        </section>
+        <section
+          class="card stack"
+        >
+          <div
+            class="section-head"
+          >
+            <h3>
+              Vue d'ensemble des services
+            </h3>
+            <span>
+              ├Ç jour
+            </span>
+          </div>
+          <ul
+            class="list clean-list"
+          >
+            <li>
+              Aucun service pour le moment.
+            </li>
+          </ul>
+        </section>
+      </div>
+      <section
+        class="card stack"
+      >
+        <div
+          class="section-head"
+        >
+          <h3>
+            Missions globales
+          </h3>
+          <span>
+            0 mission(s)
+          </span>
+        </div>
+        <div
+          class="filter-row"
+        >
+          <div
+            class="custom-select"
+          >
+            <button
+              aria-expanded="false"
+              aria-haspopup="listbox"
+              class="custom-select__trigger"
+              type="button"
+            >
+              <span
+                class="custom-select__label"
+              >
+                Tous les statuts
+              </span>
+              <svg
+                aria-hidden="true"
+                class="custom-select__chevron"
+                fill="none"
+                height="16"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2.5"
+                viewBox="0 0 24 24"
+                width="16"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <polyline
+                  points="6 9 12 15 18 9"
+                />
+              </svg>
+            </button>
+          </div>
+          <div
+            class="custom-select"
+          >
+            <button
+              aria-expanded="false"
+              aria-haspopup="listbox"
+              class="custom-select__trigger"
+              type="button"
+            >
+              <span
+                class="custom-select__label"
+              >
+                Tous les domaines
+              </span>
+              <svg
+                aria-hidden="true"
+                class="custom-select__chevron"
+                fill="none"
+                height="16"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2.5"
+                viewBox="0 0 24 24"
+                width="16"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <polyline
+                  points="6 9 12 15 18 9"
+                />
+              </svg>
+            </button>
+          </div>
+          <input
+            placeholder="Recherche mission (code mission / demande)"
+            type="text"
+            value=""
+          />
+        </div>
+        <ul
+          class="list clean-list"
+        >
+          <li>
+            Aucune mission pour ce filtre.
+          </li>
+        </ul>
+      </section>
+      <section
+        class="card stack"
+      >
+        <div
+          class="section-head"
+        >
+          <h3>
+            Utilisateurs & Prestataires
+          </h3>
+          <span>
+            1 comptes
+          </span>
+        </div>
+        <div
+          class="filter-row"
+        >
+          <div
+            class="custom-select"
+          >
+            <button
+              aria-expanded="false"
+              aria-haspopup="listbox"
+              class="custom-select__trigger"
+              type="button"
+            >
+              <span
+                class="custom-select__label"
+              >
+                Tous les r├┤les
+              </span>
+              <svg
+                aria-hidden="true"
+                class="custom-select__chevron"
+                fill="none"
+                height="16"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2.5"
+                viewBox="0 0 24 24"
+                width="16"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <polyline
+                  points="6 9 12 15 18 9"
+                />
+              </svg>
+            </button>
+          </div>
+          <input
+            placeholder="Recherche rapide (nom, username, email, t├®l├®phone)"
+            type="text"
+            value=""
+          />
+        </div>
+        <ul
+          class="list clean-list"
+        >
+          <li
+            class="admin-provider-row admin-account-row"
+          >
+            <div
+              class="admin-provider-copy"
+            >
+              <strong>
+                First
+                 
+                Last
+              </strong>
+              <div
+                class="timeline-line"
+              >
+                @
+                user1
+                 ÔÇö 
+                +237 699 000 000
+              </div>
+              <div
+                class="timeline-line"
+              >
+                user1@test.com
+              </div>
+              <div
+                class="timeline-line"
+              >
+                <span
+                  class="status-chip"
+                >
+                  client
+                </span>
+              </div>
+              <div
+                class="timeline-line"
+                id="admin-user-role-current-1"
+              >
+                R├┤le: 
+                admin
+              </div>
+            </div>
+            <div
+              class="admin-provider-actions admin-account-actions"
+            >
+              <label
+                class="admin-role-picker"
+              >
+                <span
+                  class="helper-line"
+                  id="admin-user-role-help-1"
+                >
+                  Nouveau r├┤le
+                </span>
+                <div
+                  class="custom-select"
+                >
+                  <button
+                    aria-describedby="admin-user-role-current-1 admin-user-role-help-1"
+                    aria-expanded="false"
+                    aria-haspopup="listbox"
+                    aria-label="Nouveau role pour user1"
+                    class="custom-select__trigger"
+                    type="button"
+                  >
+                    <span
+                      class="custom-select__label"
+                    >
+                      admin
+                    </span>
+                    <svg
+                      aria-hidden="true"
+                      class="custom-select__chevron"
+                      fill="none"
+                      height="16"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2.5"
+                      viewBox="0 0 24 24"
+                      width="16"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <polyline
+                        points="6 9 12 15 18 9"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </label>
+              <button
+                aria-describedby="admin-user-role-current-1"
+                aria-label="Appliquer le role admin pour user1"
+                class="ghost inline-ghost"
+                data-role="admin"
+                data-user-id="1"
+                disabled=""
+                type="button"
+              >
+                Appliquer
+              </button>
+              <button
+                aria-describedby="admin-user-role-current-1 admin-user-self-protected-1"
+                aria-label="Supprimer le compte user1"
+                class="ghost inline-ghost danger"
+                data-user-id="1"
+                disabled=""
+                type="button"
+              >
+                Supprimer
+              </button>
+              <span
+                class="helper-line"
+                id="admin-user-self-protected-1"
+              >
+                Compte prot├®g├®
+              </span>
+            </div>
+          </li>
+        </ul>
+      </section>
+    </section>
+  </div>
+</body>
+ ÔØ» Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ÔØ» node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ÔØ» node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ÔØ» node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ÔØ» src/features/admin/AdminWorkspace.test.tsx:207:19
+    205|     const users = [makeUser(1, "admin")];
+    206|     renderAdmin({ users, userId: 1 });
+    207|     expect(screen.getByText("Compte courant protege")).toBeInTheDocumeÔÇª
+       |                   ^
+    208|   });
+    209| 
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[2/2]ÔÄ»
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m20 passed[39m[22m[90m (22)[39m
+[2m   Start at [22m 11:06:30
+[2m   Duration [22m 3.21s[2m (transform 223ms, setup 163ms, collect 415ms, tests 637ms, environment 1.04s, prepare 215ms)[22m
+

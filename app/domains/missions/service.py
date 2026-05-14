@@ -18,6 +18,7 @@ from app.schemas.mission import (
     PrestataireTrustRead,
 )
 from app.schemas.prestataire import VisibilityMode
+from app.schemas.user import UserRole
 from app.tasks.tasks import award_badges, loyalty_credit
 
 
@@ -150,16 +151,32 @@ class MissionsService:
         if repo.get_prestataire(payload.prestataire_id) is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prestataire invalide")
 
-        mission = Mission(status=MissionStatus.EN_ATTENTE, **payload.model_dump())
-        repo.add_mission(mission)
-        try:
+        mission = repo.get_mission_by_demande_id(payload.demande_id)
+        if mission is not None:
+            if mission.status != MissionStatus.ANNULEE:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Une mission existe deja pour cette demande",
+                )
+
+            mission.client_id = payload.client_id
+            mission.prestataire_id = payload.prestataire_id
+            mission.service_id = payload.service_id
+            mission.status = MissionStatus.EN_ATTENTE
+            mission.at_risk = False
+            mission.scheduled_at = None
             repo.commit()
-        except IntegrityError as exc:
-            repo.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Une mission existe deja pour cette demande",
-            ) from exc
+        else:
+            mission = Mission(status=MissionStatus.EN_ATTENTE, **payload.model_dump())
+            repo.add_mission(mission)
+            try:
+                repo.commit()
+            except IntegrityError as exc:
+                repo.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Une mission existe deja pour cette demande",
+                ) from exc
 
         if demande.status != DemandeStatus.ATTRIBUEE:
             previous_status = demande.status.value
@@ -196,7 +213,18 @@ class MissionsService:
         mission_id: int,
         new_status: MissionStatus,
         actor_user: User | None = None,
+        active_role: UserRole | None = None,
     ) -> MissionRead:
+        _ALLOWED_TRANSITIONS: dict[UserRole, set[MissionStatus]] = {
+            UserRole.CLIENT: {MissionStatus.CONFIRMEE, MissionStatus.TERMINEE, MissionStatus.ANNULEE},
+            UserRole.PRESTATAIRE: {MissionStatus.ACCEPTEE, MissionStatus.EN_COURS, MissionStatus.ANNULEE},
+        }
+        if active_role is not None and active_role in _ALLOWED_TRANSITIONS:
+            if new_status not in _ALLOWED_TRANSITIONS[active_role]:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Transition vers '{new_status.value}' non autorisée pour le rôle {active_role.value}",
+                )
         repo = self._repo(db)
         mission = self.get_mission(db, mission_id)
         previous_status = mission.status
@@ -206,6 +234,20 @@ class MissionsService:
         mission.status = new_status
         if new_status != MissionStatus.EN_COURS:
             mission.at_risk = False
+
+        if new_status == MissionStatus.ANNULEE and active_role == UserRole.PRESTATAIRE:
+            demande = repo.get_demande(mission.demande_id)
+            if demande is not None and demande.status != DemandeStatus.OUVERTE:
+                previous_demande_status = demande.status.value
+                demande.status = DemandeStatus.OUVERTE
+                record_demande_event(
+                    SqlAlchemyDemandesRepository(db),
+                    demande,
+                    event_type="reouverte",
+                    actor_user=actor_user,
+                    previous_status=previous_demande_status,
+                    new_status=DemandeStatus.OUVERTE.value,
+                )
 
         if new_status in (MissionStatus.EN_COURS, MissionStatus.TERMINEE):
             demande = repo.get_demande(mission.demande_id)

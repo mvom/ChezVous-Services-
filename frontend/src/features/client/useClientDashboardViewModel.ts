@@ -6,6 +6,16 @@ import { DEMANDE_DRAFT_KEY, SUB_SERVICES_CONFIG } from "../../constants";
 import { demandeGeoLabel } from "../../utils";
 import type { ClientStatusFilter, DemandeCategory } from "../../types";
 
+function compareDemandesByRecencyDesc(
+  a: { created_at: string; id: number },
+  b: { created_at: string; id: number }
+): number {
+  const left = Date.parse(a.created_at);
+  const right = Date.parse(b.created_at);
+  const timeDelta = (Number.isNaN(right) ? 0 : right) - (Number.isNaN(left) ? 0 : left);
+  return timeDelta !== 0 ? timeDelta : b.id - a.id;
+}
+
 export function useClientDashboardViewModel() {
   const ctx = useAppCtx();
   const {
@@ -38,8 +48,23 @@ export function useClientDashboardViewModel() {
     const quartier = String(formData.get("quartier") || "").trim();
     const clientAvailabilityMode = String(formData.get("client_availability_mode") || "flexible");
     const clientAvailabilityNote = String(formData.get("client_availability_note") || "").trim();
+    const requestedDatetimeRaw = String(formData.get("requested_datetime") || "").trim();
     const category = newDemandeCategory;
-    if (clientAvailabilityMode === "fixe" && clientAvailabilityNote.length < 5) {
+    let requestedDatetimeLabel = "";
+    if (requestedDatetimeRaw) {
+      const requestedDate = new Date(requestedDatetimeRaw);
+      if (Number.isNaN(requestedDate.getTime())) {
+        setToast({ kind: "err", message: "Date/heure demandée invalide." });
+        return;
+      }
+      if (requestedDate.getTime() < Date.now()) {
+        setToast({ kind: "err", message: "Vous ne pouvez pas créer une demande sur une date/heure déjà passée." });
+        return;
+      }
+      requestedDatetimeLabel = `Intervention souhaitée: ${requestedDate.toLocaleString("fr-FR")}`;
+    }
+    const mergedAvailabilityNote = [clientAvailabilityNote, requestedDatetimeLabel].filter(Boolean).join(" | ");
+    if (clientAvailabilityMode === "fixe" && mergedAvailabilityNote.length < 5) {
       setToast({ kind: "err", message: "Précisez votre disponibilité (minimum 5 caractères)" });
       return;
     }
@@ -53,7 +78,8 @@ export function useClientDashboardViewModel() {
         arrondissement,
         quartier,
         client_availability_mode: clientAvailabilityMode,
-        client_availability_note: clientAvailabilityNote || null,
+        client_availability_note: mergedAvailabilityNote || null,
+        requested_datetime: requestedDatetimeRaw || null,
         priority: String(formData.get("priority") || "normale"),
         sub_services: newDemandeSubServices,
       };
@@ -67,6 +93,7 @@ export function useClientDashboardViewModel() {
           category,
           client_availability_mode: clientAvailabilityMode,
           client_availability_note: clientAvailabilityNote,
+          requested_datetime: requestedDatetimeRaw,
           priority: payload.priority,
         })
       );
@@ -106,7 +133,10 @@ export function useClientDashboardViewModel() {
   }
 
   // ── Computed data ────────────────────────────────────────────────────────────
-  const clientDemandes = useMemo(() => demandes.filter((d) => d.client_id === userId), [demandes, userId]);
+  const clientDemandes = useMemo(
+    () => demandes.filter((d) => d.client_id === userId).sort(compareDemandesByRecencyDesc),
+    [demandes, userId]
+  );
   const clientMissions = useMemo(() => missions.filter((m) => m.client_id === userId), [missions, userId]);
 
   const loweredQuery = clientQuery.trim().toLowerCase();
@@ -142,13 +172,21 @@ export function useClientDashboardViewModel() {
   );
 
   const latestOpenDemande = useMemo(
-    () => [...clientDemandes].filter((d) => d.status === "ouverte").sort((a, b) => b.id - a.id)[0],
+    () => [...clientDemandes].filter((d) => d.status === "ouverte").sort(compareDemandesByRecencyDesc)[0],
     [clientDemandes]
   );
 
   const matchingPreview = latestOpenDemande ? matchingByDemande[latestOpenDemande.id] : null;
   const matchingPreviewPending = latestOpenDemande ? Boolean(matchingLoadingByDemande[latestOpenDemande.id]) : false;
   const topCandidates = matchingPreview?.candidates?.slice(0, 3) || [];
+
+  useEffect(() => {
+    if (!latestOpenDemande) {
+      return;
+    }
+    void loadClientMatchingPreview(latestOpenDemande.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestOpenDemande?.id]);
 
   async function refreshClientDashboard(): Promise<void> {
     if (!claims) {
@@ -162,6 +200,25 @@ export function useClientDashboardViewModel() {
       return;
     }
     await loadClientMatchingPreview(latestOpenDemande.id);
+  }
+
+  async function handleValidatePrestataire(demandeId: number, prestataireId: number): Promise<void> {
+    if (!claims || !userId) return;
+    try {
+      await apiFetch<unknown>("/missions", {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          demande_id: demandeId,
+          client_id: userId,
+          prestataire_id: prestataireId,
+        }),
+      });
+      setToast({ kind: "ok", message: "Prestataire validé — mission créée en attente de confirmation." });
+      await refreshDashboard(claims);
+    } catch (error) {
+      setToast({ kind: "err", message: error instanceof Error ? error.message : "Échec de la validation" });
+    }
   }
 
   return {
@@ -249,5 +306,6 @@ export function useClientDashboardViewModel() {
     refreshMatchingPreview,
     handleCreateDemande,
     handleDuplicateDemande,
+    handleValidatePrestataire,
   };
 }

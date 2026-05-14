@@ -19,6 +19,19 @@ import {
 
 // ── Geo helpers ───────────────────────────────────────────────────────────────
 
+// Module-level token store — set after login/refresh, read by apiFetch
+// Module-level token store — persisted in sessionStorage so it survives HMR/nav
+const _TOKEN_KEY = "__cvs_auth_token__";
+let _authToken: string | null = typeof sessionStorage !== "undefined" ? sessionStorage.getItem(_TOKEN_KEY) : null;
+export function setAuthToken(token: string | null): void {
+  _authToken = token;
+  if (typeof sessionStorage !== "undefined") {
+    if (token) sessionStorage.setItem(_TOKEN_KEY, token);
+    else sessionStorage.removeItem(_TOKEN_KEY);
+  }
+}
+export function getAuthToken(): string | null { return _authToken; }
+
 export function cleanGeo(value?: string | null): string {
   return (value || "").trim();
 }
@@ -51,7 +64,14 @@ export function readThemePreference(username?: string): ThemeMode {
 }
 
 export function sessionToClaims(r: SessionResponse): JwtClaims {
-  return { sub: r.sub, role: r.role, username: r.username, exp: r.exp };
+  const decoded = r.access_token ? decodeJwt(r.access_token) : null;
+  return {
+    sub: r.sub ?? decoded?.sub,
+    role: r.role ?? r.active_role ?? decoded?.role,
+    username: r.username ?? decoded?.username,
+    exp: r.exp ?? decoded?.exp,
+    token: r.access_token,
+  };
 }
 
 export function decodeJwt(jwtToken: string): JwtClaims | null {
@@ -78,7 +98,22 @@ export function shouldActualiserToken(claims?: JwtClaims | null, nowEpochSeconds
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, options);
+  const headers = new Headers(options.headers as HeadersInit | undefined);
+  if (_authToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${_authToken}`);
+  }
+  const url = `${API_BASE}${path}`;
+  let response: Response;
+  try {
+    response = await fetch(url, { credentials: "include", ...options, headers });
+  } catch {
+    // Retry once to absorb transient connection resets during container warm-up.
+    try {
+      response = await fetch(url, { credentials: "include", ...options, headers });
+    } catch {
+      throw new Error("Connexion API impossible. Verifiez que le backend est demarre (port 8000).");
+    }
+  }
   const contentType = response.headers.get("content-type") || "";
   const body: unknown = contentType.includes("application/json") ? await response.json() : await response.text();
 
@@ -181,13 +216,30 @@ export function formatStatusLabel(status?: string | null): string {
 }
 
 export function demandeEventText(event: DemandeEvent): string {
-  if (EVENT_TEXT[event.event_type]) return EVENT_TEXT[event.event_type];
-  if (event.previous_status && event.new_status) {
-    return `Transition : ${formatStatusLabel(event.previous_status)} → ${formatStatusLabel(event.new_status)}`;
+  // 1. Si le type d'événement est connu, utiliser le label explicite
+  if (EVENT_TEXT[event.event_type]) {
+    // Cas spécial : modifiee avec new_status ouverte = publication
+    if (event.event_type === "modifiee" && event.new_status === "ouverte") {
+      return "Demande publiée";
+    }
+    // Cas spécial : annulee
+    if (event.event_type === "annulee") {
+      return "Demande annulée";
+    }
+    return EVENT_TEXT[event.event_type];
   }
+
+  // 2. Si changement de statut explicite (hors annulation), afficher une phrase claire
+  if (event.previous_status && event.new_status && event.previous_status !== event.new_status && event.new_status !== "annulee") {
+    return `Statut mis à jour : ${formatStatusLabel(event.new_status)}`;
+  }
+
+  // 3. Si nouveau statut seul, afficher une phrase claire
   if (event.new_status) {
     return `Statut : ${formatStatusLabel(event.new_status)}`;
   }
+
+  // 4. Fallback : label lisible du type d'événement
   return formatStatusLabel(event.event_type);
 }
 

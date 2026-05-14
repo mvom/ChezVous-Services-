@@ -32,9 +32,18 @@ export const AVAILABILITY_LABELS: Record<string, string> = {
 
 export const EVENT_TEXT: Record<string, string> = {
   cree: "Demande créée",
+  modifiee: "Demande mise à jour",
   attribuee: "Demande attribuée",
+  acceptee: "Mission acceptée",
+  confirmee: "Mission confirmée",
   en_cours: "Mission en cours",
   terminee: "Mission terminée",
+  notee: "Mission notée",
+  annulee: "Demande annulée",
+  expiree: "Demande expirée",
+  litige: "Litige ouvert",
+  // Ajouts pour robustesse
+  en_attente: "En attente de traitement",
 };
 
 export const STEP_LABELS: Record<string, string> = {

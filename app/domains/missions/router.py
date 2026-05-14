@@ -16,11 +16,13 @@ router = APIRouter(prefix="/missions", tags=["Missions"])
 def create_mission(
     payload: MissionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.PRESTATAIRE, UserRole.ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.CLIENT, UserRole.PRESTATAIRE, UserRole.ADMIN)),
     active_role: UserRole = Depends(get_current_active_role),
 ) -> MissionRead:
     if active_role == UserRole.PRESTATAIRE and payload.prestataire_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="prestataire_id invalide")
+    if active_role == UserRole.CLIENT and payload.client_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="client_id invalide")
     return missions_service.create_mission(db, payload, actor_user=current_user)
 
 
@@ -46,5 +48,6 @@ def update_mission_status(
     payload: MissionUpdateStatus,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles(UserRole.CLIENT, UserRole.PRESTATAIRE, UserRole.ADMIN)),
+    active_role: UserRole = Depends(get_current_active_role),
 ) -> MissionRead:
-    return missions_service.update_status(db, mission_id, payload.status, actor_user=current_user)
+    return missions_service.update_status(db, mission_id, payload.status, actor_user=current_user, active_role=active_role)

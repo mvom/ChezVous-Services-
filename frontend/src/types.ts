@@ -8,6 +8,7 @@ export type JwtClaims = {
   role?: Role;
   username?: string;
   exp?: number;
+  token?: string;
 };
 
 export type UserProfile = {
@@ -58,12 +59,14 @@ export type AuthRolesResponse = {
 };
 
 export type SessionResponse = {
-  sub: string;
-  role: Role;
-  username: string;
-  exp: number;
+  sub?: string;
+  role?: Role;
+  username?: string;
+  exp?: number;
   active_role: Role;
   available_roles: Role[];
+  access_token?: string;
+  token_type?: string;
 };
 
 export type DemandeCategory =

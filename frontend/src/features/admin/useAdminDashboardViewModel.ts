@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { useAppCtx } from "../../AppContext";
 import { apiFetch, jsonHeaders } from "../../utils";
-import type { PrestataireRecord, Role, UserRecord } from "../../types";
+import type { DemandeCategory, PrestataireRecord, Role, UserRecord } from "../../types";
 
 export function useAdminDashboardViewModel() {
   const ctx = useAppCtx();
@@ -20,6 +20,13 @@ export function useAdminDashboardViewModel() {
   const [adminRoleDraftByUserId, setAdminRoleDraftByUserId] = useState<Record<number, Role>>({});
   const [adminActionUserId, setAdminActionUserId] = useState<number | null>(null);
   const [adminActionKind, setAdminActionKind] = useState<"role" | "delete" | null>(null);
+  const [adminUserRoleFilter, setAdminUserRoleFilter] = useState<Role | "all">("all");
+  const [adminUserQuery, setAdminUserQuery] = useState("");
+  const [adminDemandeQuery, setAdminDemandeQuery] = useState("");
+  const [adminMissionStatusFilter, setAdminMissionStatusFilter] = useState<"all" | "attribuee" | "en_cours" | "terminee" | "annulee">("all");
+  const [adminMissionCategoryFilter, setAdminMissionCategoryFilter] = useState<DemandeCategory | "all">("all");
+  const [adminMissionQuery, setAdminMissionQuery] = useState("");
+  const [selectedMissionId, setSelectedMissionId] = useState<number | null>(null);
 
   const providerUsersCount = useMemo(() => users.filter((u) => u.role === "prestataire").length, [users]);
   const verifiedProvidersCount = useMemo(() => prestataires.filter((p) => p.verified).length, [prestataires]);
@@ -110,6 +117,20 @@ export function useAdminDashboardViewModel() {
     setAdminRoleDraftByUserId,
     adminActionUserId,
     adminActionKind,
+    adminUserRoleFilter,
+    setAdminUserRoleFilter,
+    adminUserQuery,
+    setAdminUserQuery,
+    adminDemandeQuery,
+    setAdminDemandeQuery,
+    adminMissionStatusFilter,
+    setAdminMissionStatusFilter,
+    adminMissionCategoryFilter,
+    setAdminMissionCategoryFilter,
+    adminMissionQuery,
+    setAdminMissionQuery,
+    selectedMissionId,
+    setSelectedMissionId,
     // ─ Computed
     providerUsersCount,
     verifiedProvidersCount,
