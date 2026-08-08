@@ -6,7 +6,7 @@ FastAPI backend application for connecting Clients and Providers in household se
 
 Project diagrams:
 
-- Use cases: [UML_diagrams/uses_case_diag.png](UML_diagrams/uses_case_diag.png)
+- Use cases: [app_services_ménagers/UML_diagrams/uses_case_diag.png](app_services_ménagers/UML_diagrams/uses_case_diag.png)
 - Activity: [UML_diagrams/activity_diag.png](UML_diagrams/activity_diag.png)
 - Sequence: [UML_diagrams/sequence_diag.png](UML_diagrams/sequence_diag.png)
 - Class: [UML_diagrams/classes_diag.png](UML_diagrams/classes_diag.png)
